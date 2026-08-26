@@ -84,10 +84,15 @@ func CellKeyForObservation(o Observation) string {
 	return CellKey(o.Brand, o.Model, o.Dial, o.Material, o.Scope)
 }
 
-// GroupCells buckets observations into exact cells.
+// GroupCells buckets observations into exact cells. Observations without a
+// stated brand or model are excluded — they cannot be attributed to any
+// exact cell, and an unverifiable data point is not evidence.
 func GroupCells(observations []Observation) map[string][]Observation {
 	cells := make(map[string][]Observation)
 	for _, o := range observations {
+		if strings.TrimSpace(o.Brand) == "" || strings.TrimSpace(o.Model) == "" {
+			continue
+		}
 		key := CellKeyForObservation(o)
 		cells[key] = append(cells[key], o)
 	}
