@@ -1,0 +1,39 @@
+# fly.toml.example — copy to fly.toml, adjust APP name, then `fly launch`
+# Nightly crawl via Fly Machines schedule (no extra infra, free tier).
+# Requires a volume for persistence: `fly volumes create data --region mad --size 1`
+
+app = "watchfetcher"
+primary_region = "mad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  GBPUSD = "1.27"
+  EURUSD = "1.08"
+  CHFUSD = "1.12"
+
+[mounts]
+  source = "data"
+  destination = "/data"
+
+# The app itself (if you later add a web server) — optional
+# [http_service]
+#   internal_port = 8080
+#   force_https = true
+#   auto_stop_machines = true
+
+# Nightly job — runs scripts/run-nightly.sh daily at ~03:xx UTC with jitter
+# Fly schedule syntax: daily/weekly/hourly or cron "0 3 * * *"
+# Uses same image but different entrypoint; shares /data volume
+[[machines]]
+  name = "nightly"
+  schedule = "daily"
+  command = ["/app/scripts/run-nightly.sh"]
+  # Alternative cron with explicit time (Fly supports cron strings):
+  # schedule = "0 3 * * *"
+
+# To test locally before deploying:
+#   ./scripts/run-nightly.sh
+#   cat data/crawl_metrics.json | jq
+#   fly logs --machine nightly -n 50 | grep ALERT

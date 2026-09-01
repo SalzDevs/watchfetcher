@@ -1,0 +1,14 @@
+<svg width="280" height="280" viewBox="0 0 280 280" xmlns="http://www.w3.org/2000/svg">
+  <rect width="280" height="280" rx="14" fill="#1A1E22"/>
+  <rect x="1" y="1" width="278" height="278" rx="14" fill="none" stroke="#C8D1DB" stroke-opacity="0.2"/>
+  <g transform="translate(140,140)">
+    <circle r="78" fill="none" stroke="#C8D1DB" stroke-width="1.5" stroke-opacity="0.35"/>
+    <circle r="2" fill="#C19A5B"/>
+    <line x1="0" y1="0" x2="0" y2="-52" stroke="#EDE9E1" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="0" y1="0" x2="42" y2="0" stroke="#EDE9E1" stroke-width="2" stroke-linecap="round"/>
+    <circle r="68" fill="none" stroke="#C19A5B" stroke-width="0.7" stroke-dasharray="2 6" stroke-opacity="0.4"/>
+    <text x="0" y="34" text-anchor="middle" font-family="Geist Mono, monospace" font-size="7" letter-spacing="0.14em" fill="#7A8A7F">WATCH</text>
+    <text x="0" y="44" text-anchor="middle" font-family="Geist Mono, monospace" font-size="6" letter-spacing="0.12em" fill="#C8D1DB" opacity="0.7">NO IMAGE</text>
+  </g>
+  <text x="140" y="252" text-anchor="middle" font-family="Geist Mono, monospace" font-size="8" letter-spacing="0.12em" fill="#7A8A7F">ATELIER STEEL • EXACT CELL</text>
+</svg>

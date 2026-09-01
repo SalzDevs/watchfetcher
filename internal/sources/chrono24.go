@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"watchfetcher/internal/attrs"
+	"watchfetcher/internal/crawl"
 	"watchfetcher/internal/httpclient"
 	wfmodel "watchfetcher/internal/model"
 )
@@ -40,12 +41,9 @@ func (c *Chrono24Source) Fetch(ctx context.Context, client *httpclient.Client, b
 	terms := strings.TrimSpace(brand + " " + model)
 
 	for page := 1; page <= maxPages; page++ {
-		status, body, err := client.Get(ctx, c.searchURL(terms, page))
+		_, body, err := crawl.DoGetWithRetry(ctx, client, c.ID(), c.searchURL(terms, page), nil)
 		if err != nil {
 			return out, fmt.Errorf("chrono24 fetch: %w", err)
-		}
-		if status != 200 {
-			return out, fmt.Errorf("chrono24 returned HTTP %d", status)
 		}
 		offers := CollectOffers(ExtractJSONLD(body))
 		fresh := 0

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"watchfetcher/internal/attrs"
+	"watchfetcher/internal/crawl"
 	"watchfetcher/internal/httpclient"
 	wfmodel "watchfetcher/internal/model"
 )
@@ -44,17 +45,16 @@ func (b *BobswatchesSource) Fetch(ctx context.Context, client *httpclient.Client
 	maxPages := 3
 
 	for page := 1; page <= maxPages; page++ {
-		url := fmt.Sprintf("https://www.bobswatches.com/%s?query=%s&page=%d", slug, url.QueryEscape(terms), page)
-		status, body, err := client.Get(ctx, url)
+		u := fmt.Sprintf("https://www.bobswatches.com/%s?query=%s&page=%d", slug, url.QueryEscape(terms), page)
+		status, body, err := crawl.DoGetWithRetry(ctx, client, b.ID(), u, nil)
 		if err != nil {
+			// 404 is expected for brands not catalogued — surface clearly
+			if status == 404 {
+				return out, fmt.Errorf("bobswatches: no catalog page for brand %q", brand)
+			}
 			return out, fmt.Errorf("bobswatches fetch: %w", err)
 		}
-		if status == 404 {
-			return out, fmt.Errorf("bobswatches: no catalog page for brand %q", brand)
-		}
-		if status != 200 {
-			return out, fmt.Errorf("bobswatches returned HTTP %d", status)
-		}
+		_ = status
 
 		fresh := 0
 		for _, tree := range ExtractJSONLD(body) {

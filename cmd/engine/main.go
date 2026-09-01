@@ -15,6 +15,7 @@ import (
 
 	"watchfetcher/internal/attrs"
 	"watchfetcher/internal/engine"
+	"watchfetcher/internal/store"
 )
 
 type observationRow struct {
@@ -27,6 +28,7 @@ type observationRow struct {
 	title      string
 	url        string
 	source     string
+	imageURL   string
 	priceUSD   float64
 	observedAt time.Time
 }
@@ -35,18 +37,17 @@ func main() {
 	dbPath := flag.String("db", "data/pricing.sqlite", "path to the observations database")
 	flag.Parse()
 
-	db, err := sql.Open("sqlite", *dbPath)
+	db, err := store.Open(*dbPath)
 	if err != nil {
 		fatal("open db:", err)
 	}
-	db.Exec("PRAGMA busy_timeout = 5000")
-	db.Exec("PRAGMA journal_mode = WAL")
+	defer db.Close()
 
 	rows, err := db.Query(`
 		SELECT COALESCE(brand, ''), COALESCE(model, ''), COALESCE(dial, ''),
 		       COALESCE(material, ''), COALESCE(scope, ''), COALESCE(ref, ''),
 		       COALESCE(title, ''), COALESCE(source_url, ''),
-		       COALESCE(source_type, 'unknown'), price_usd, observed_at
+		       COALESCE(source_type, 'unknown'), COALESCE(image_url, ''), price_usd, observed_at
 		FROM observations
 		WHERE price_usd > 0 AND observed_at IS NOT NULL
 	`)
@@ -55,11 +56,12 @@ func main() {
 	}
 
 	var observations []engine.Observation
+	refHits, dialFixed, materialFixed, refModelMismatch := 0, 0, 0, 0
 	for rows.Next() {
 		var r observationRow
 		var ts float64
 		if err := rows.Scan(&r.brand, &r.model, &r.dial, &r.material, &r.scope,
-			&r.ref, &r.title, &r.url, &r.source, &r.priceUSD, &ts); err != nil {
+			&r.ref, &r.title, &r.url, &r.source, &r.imageURL, &r.priceUSD, &ts); err != nil {
 			fatal("scan:", err)
 		}
 		// Enrichment: the legacy data has polluted brands and empty models —
@@ -76,30 +78,64 @@ func main() {
 		if brand == "" || modelName == "" {
 			continue // unverifiable at brand or model level — not evidence
 		}
+		dial, material := r.dial, r.material
+		// Reference-derived attributes: the factory SKU is ground truth for
+		// dial and material. Free-text detection (DetectDial/DetectMaterial)
+		// contaminated cells across references (batman vs pepsi share a model
+		// family); a known ref pins both and fills the empty ones (watchfinder).
+		if r.ref != "" {
+			if entry, ok := attrs.LookupRef(r.ref); ok {
+				refHits++
+				if entry.Brand == brand && entry.Model == modelName {
+					if entry.Dial != "" && dial != entry.Dial {
+						dialFixed++
+						dial = entry.Dial
+					}
+					if entry.Material != "" && material != entry.Material {
+						materialFixed++
+						material = entry.Material
+					}
+				} else {
+					refModelMismatch++
+				}
+			}
+		}
 		observations = append(observations, engine.Observation{
 			Brand:      brand,
 			Model:      modelName,
-			Dial:       r.dial,
-			Material:   r.material,
+			Dial:       dial,
+			Material:   material,
 			Scope:      r.scope,
 			Ref:        r.ref,
 			Title:      r.title,
 			URL:        r.url,
 			Source:     r.source,
+			ImageURL:   r.imageURL,
 			PriceUSD:   r.priceUSD,
 			ObservedAt: time.Unix(int64(ts), 0),
 		})
 	}
 	rows.Close()
 	fmt.Printf("loaded %d observations\n", len(observations))
+	fmt.Printf("ref taxonomy: %d refs catalogued; hits=%d dial_fixed=%d material_fixed=%d model_mismatch=%d\n",
+		attrs.ReferenceCount(), refHits, dialFixed, materialFixed, refModelMismatch)
 
 	now := time.Now()
 	cells := engine.GroupCells(observations)
 
 	verdicts := []*engine.Verdict{}
-	for key, cellObs := range cells {
-		parts := splitCellKey(key)
-		v := engine.ComputeVerdict(parts[0], parts[1], parts[2], parts[3], parts[4], cellObs, now)
+	for _, cellObs := range cells {
+		// Use canonical brand/model from first observation (all share same exact cell).
+		// This preserves canonical casing (e.g. "Rolex" not "rolex") vs lowercased splitCellKey.
+		if len(cellObs) == 0 {
+			continue
+		}
+		brand := cellObs[0].Brand
+		model := cellObs[0].Model
+		dial := cellObs[0].Dial
+		material := cellObs[0].Material
+		scope := cellObs[0].Scope
+		v := engine.ComputeVerdict(brand, model, dial, material, scope, cellObs, now)
 		if v != nil {
 			verdicts = append(verdicts, v)
 		}
@@ -126,26 +162,28 @@ func main() {
 }
 
 func writeVerdicts(db *sql.DB, verdicts []*engine.Verdict, dbPath string) {
-	db.Exec("DROP TABLE IF EXISTS verdict_receipts")
-	db.Exec("DROP TABLE IF EXISTS verdicts")
-	db.Exec(`
-		CREATE TABLE verdicts (
-			cell_key    TEXT PRIMARY KEY,
-			brand       TEXT, model TEXT, dial TEXT, material TEXT, scope TEXT,
-			fair_low    REAL, fair_high REAL, median REAL,
-			p25 REAL, p75 REAL, count INTEGER,
-			confidence  TEXT,
-			computed_at INTEGER
-		)`)
-	db.Exec(`
-		CREATE TABLE verdict_receipts (
-			cell_key TEXT NOT NULL,
-			title    TEXT, price REAL, url TEXT, date TEXT, source TEXT, ref TEXT
-		)`)
+	// Idempotent / cumulative: if we computed zero verdicts but previous
+	// verdicts exist (e.g. fetch failed, no new observations), keep old.
+	if len(verdicts) == 0 {
+		var existing int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM verdicts`).Scan(&existing); err == nil && existing > 0 {
+			fmt.Printf("no verdicts computed — preserving %d previous verdicts (no new comparable data)\n", existing)
+			return
+		}
+	}
+	// Atomic replace: delete + insert in one transaction so a crash never
+	// leaves verdicts empty when we had good data.
+
 
 	tx, err := db.Begin()
 	if err != nil {
 		fatal("begin tx:", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM verdict_receipts`); err != nil {
+		fatal("clear receipts:", err)
+	}
+	if _, err := tx.Exec(`DELETE FROM verdicts`); err != nil {
+		fatal("clear verdicts:", err)
 	}
 	vstmt, err := tx.Prepare(`
 		INSERT INTO verdicts
@@ -156,10 +194,16 @@ func writeVerdicts(db *sql.DB, verdicts []*engine.Verdict, dbPath string) {
 		fatal("prepare verdicts:", err)
 	}
 	rstmt, err := tx.Prepare(`
-		INSERT INTO verdict_receipts (cell_key, title, price, url, date, source, ref)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`)
+		INSERT INTO verdict_receipts (cell_key, title, price, url, date, source, ref, image_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		fatal("prepare receipts:", err)
+	}
+	hstmt, err := tx.Prepare(`
+		INSERT OR REPLACE INTO verdict_history (cell_key, computed_at, count, median, p25, p75)
+		VALUES (?, ?, ?, ?, ?, ?)`)
+	if err != nil {
+		fatal("prepare history:", err)
 	}
 
 	for _, v := range verdicts {
@@ -169,9 +213,13 @@ func writeVerdicts(db *sql.DB, verdicts []*engine.Verdict, dbPath string) {
 			fatal("insert verdict:", err)
 		}
 		for _, r := range v.Receipts {
-			if _, err := rstmt.Exec(v.CellKey, r.Title, r.Price, r.URL, r.Date, r.Source, r.Ref); err != nil {
+			if _, err := rstmt.Exec(v.CellKey, r.Title, r.Price, r.URL, r.Date, r.Source, r.Ref, r.ImageURL); err != nil {
 				fatal("insert receipt:", err)
 			}
+		}
+		// Append-only trend snapshot — one per run, deduped on (cell_key, computed_at).
+		if _, err := hstmt.Exec(v.CellKey, ts, v.Count, v.Median, v.P25, v.P75); err != nil {
+			fatal("insert history:", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {

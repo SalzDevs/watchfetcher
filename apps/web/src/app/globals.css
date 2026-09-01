@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #0F1418;
+  --steel: #C8D1DB;
+  --brass: #C19A5B;
+  --enamel: #EDE9E1;
+  --signal: #E63C2F;
+  --patina: #7A8A7F;
+  --steel-2: #9AA8B6;
+  --ink-2: #1A1E22;
+  --enamel-2: #FFFCF8;
+  --background: var(--ink);
+  --foreground: var(--enamel);
+  --border: color-mix(in srgb, var(--steel) 22%, var(--ink));
+  --border-strong: color-mix(in srgb, var(--steel) 35%, var(--ink));
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-steel: var(--steel);
+  --color-brass: var(--brass);
+  --color-enamel: var(--enamel);
+  --color-signal: var(--signal);
+  --color-patina: var(--patina);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+  --font-sans: var(--font-mono);
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+}
+
+* {
+  scrollbar-color: var(--steel) transparent;
+  scrollbar-width: thin;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--ink);
+}
+
+body {
+  background: var(--ink);
+  color: var(--enamel);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "ss01" 1, "tnum" 1;
+}
+
+/* Apple ultraThinMaterial — header / sheet */
+.ultraThinMaterial {
+  background: color-mix(in srgb, var(--enamel) 60%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid color-mix(in srgb, white 40%, transparent);
+}
+.ultraThinMaterial--ink {
+  background: color-mix(in srgb, var(--ink) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid color-mix(in srgb, var(--steel) 14%, transparent);
+}
+
+/* Compositor hints */
+.will-transform {
+  will-change: transform;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--brass) 30%, var(--ink));
+  color: var(--enamel);
+}
+
+/* Focus */
+:focus-visible {
+  outline: 1.5px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--steel) 45%, transparent);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Focus — instant on pointer-down */
+.button-press:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease-out;
+}
+
+/* Typography — size-specific tracking/leading */
+.display {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-optical-sizing: auto;
+}
+
+/* Reduce motion — keep opacity, drop transform/spring */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+  }
+  .sheet, .caliper-band, .caliper-needle {
+    transition: opacity 200ms ease !important;
+    transform: none !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .ultraThinMaterial,
+  .ultraThinMaterial--ink {
+    background: var(--enamel);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .ultraThinMaterial--ink {
+    background: var(--ink);
+  }
+}
+@media (prefers-contrast: more) {
+  .ultraThinMaterial,
+  .ultraThinMaterial--ink {
+    background: var(--enamel);
+    backdrop-filter: none;
+    border: 1.5px solid var(--ink);
+  }
+}

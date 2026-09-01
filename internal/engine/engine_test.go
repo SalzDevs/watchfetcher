@@ -89,8 +89,8 @@ func TestVerdictComputedForSufficientCell(t *testing.T) {
 	if v.Confidence != "medium" {
 		t.Errorf("18 comps after trim should be medium confidence, got %q", v.Confidence)
 	}
-	if len(v.Receipts) == 0 || len(v.Receipts) > MaxReceipts {
-		t.Errorf("receipts = %d, want 1..%d", len(v.Receipts), MaxReceipts)
+	if len(v.Receipts) == 0 || len(v.Receipts) > Current.MaxReceipts {
+		t.Errorf("receipts = %d, want 1..%d", len(v.Receipts), Current.MaxReceipts)
 	}
 }
 

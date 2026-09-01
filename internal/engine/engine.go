@@ -5,23 +5,62 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// Frozen spec constants.
-const (
-	MinSamples        = 4     // below this: no verdict, ever
-	HighConfidence    = 20    // internal quality tiers — never shown to users
-	MediumConfidence  = 8     //
-	HalfLifeDays      = 900.0 // recency weighting: a sale from 900 days ago counts half
-	TrimLowMult       = 0.2   // dominant-cluster trim band
-	TrimHighMult      = 2.2
-	TrimIterations    = 2
-	MaxReceipts       = 12
-)
+// Ruleset is the versioned statistical configuration. Every verdict records
+// the hash of the ruleset that produced it (PLAN.md §5: content-addressed).
+// Changing any value here is a deliberate, versioned, diffed act (§13):
+// bump Version, and the golden suite must be re-blessed.
+type Ruleset struct {
+	Version          string  `json:"version"`
+	MinSamples       int     `json:"min_samples"`
+	HighConfidence   int     `json:"high_confidence"`
+	MediumConfidence int     `json:"medium_confidence"`
+	HalfLifeDays     float64 `json:"half_life_days"`
+	TrimLowMult      float64 `json:"trim_low_mult"`
+	TrimHighMult     float64 `json:"trim_high_mult"`
+	TrimIterations   int     `json:"trim_iterations"`
+	MaxReceipts      int     `json:"max_receipts"`
+	Gates            Gates   `json:"gates"`
+}
+
+// Gates are the eligibility thresholds (PLAN.md §7.4). A range publishes only
+// if all four hold. Refusing to publish is the feature.
+type Gates struct {
+	MinVolume   int     `json:"min_volume"`    // ≥ exact-tier observations
+	MinSources  int     `json:"min_sources"`   // ≥ independent sources
+	MaxAgeDays  float64 `json:"max_age_days"`  // freshest observation < N days
+	MaxIQRRatio float64 `json:"max_iqr_ratio"` // p75/p25 < N
+}
+
+// Current is the active ruleset. Any change = new version + golden re-bless.
+var Current = Ruleset{
+	Version:          "v1.0.0",
+	MinSamples:       4,
+	HighConfidence:   20,
+	MediumConfidence: 8,
+	HalfLifeDays:     900.0,
+	TrimLowMult:      0.2,
+	TrimHighMult:     2.2,
+	TrimIterations:   2,
+	MaxReceipts:      12,
+	Gates:            Gates{MinVolume: 8, MinSources: 3, MaxAgeDays: 180, MaxIQRRatio: 2.5},
+}
+
+// Hash is the canonical content hash of the ruleset definition.
+func (r Ruleset) Hash() string {
+	b, _ := json.Marshal(r)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
 
 // Observation is one market data point: a listing seen at a point in time.
 type Observation struct {
@@ -34,18 +73,20 @@ type Observation struct {
 	Title      string
 	URL        string
 	Source     string
+	ImageURL   string
 	PriceUSD   float64
 	ObservedAt time.Time
 }
 
 // Receipt is one comparable listing shown as evidence for a verdict.
 type Receipt struct {
-	Title  string  `json:"title"`
-	Price  float64 `json:"price"`
-	URL    string  `json:"url"`
-	Date   string  `json:"date"`
-	Source string  `json:"source"`
-	Ref    string  `json:"ref"`
+	Title    string  `json:"title"`
+	Price    float64 `json:"price"`
+	URL      string  `json:"url"`
+	Date     string  `json:"date"`
+	Source   string  `json:"source"`
+	Ref      string  `json:"ref"`
+	ImageURL string  `json:"image_url,omitempty"`
 }
 
 // Verdict is the precomputed fair-value answer for one exact cell.
@@ -65,6 +106,27 @@ type Verdict struct {
 	Confidence string    `json:"confidence"` // INTERNAL — never rendered
 	ComputedAt time.Time `json:"computed_at"`
 	Receipts   []Receipt `json:"receipts"`
+	// Eligibility gates (PLAN.md §7.4). Empty = published range is gate-clean.
+	GatesStatus  string   `json:"gates_status,omitempty"`  // "pass" | "limited"
+	FailingGates []string `json:"failing_gates,omitempty"` // which gates failed
+	RulesetHash  string   `json:"ruleset_hash,omitempty"`  // G4: content-addressed
+	InputsHash   string   `json:"inputs_hash,omitempty"`   // hash of the evidence set
+}
+
+// InputsHash computes the content hash of an evidence set + cell key (G4).
+// Deterministic: order-independent over observations.
+func InputsHash(cellKey string, inCell []Observation) string {
+	sigs := make([]string, 0, len(inCell))
+	for _, o := range inCell {
+		sigs = append(sigs, strings.Join([]string{
+			o.Source, o.URL, o.Title, o.Ref,
+			strings.TrimSpace(strconv.FormatFloat(o.PriceUSD, 'f', 2, 64)),
+			strconv.FormatInt(o.ObservedAt.Unix(), 10),
+		}, "\x1f"))
+	}
+	sort.Strings(sigs)
+	h := sha256.Sum256([]byte(cellKey + "\x1e" + strings.Join(sigs, "\x1e")))
+	return hex.EncodeToString(h[:])
 }
 
 // CellKey builds the exact-match identity for a watch configuration.
@@ -99,8 +161,35 @@ func GroupCells(observations []Observation) map[string][]Observation {
 	return cells
 }
 
+// EvaluateGates applies the eligibility gates (PLAN.md §7.4) to an exact-tier
+// comparable set. Pure. Returns the failing gate names; empty = all pass.
+func EvaluateGates(inCell []Observation, p25, p75 float64, now time.Time) []string {
+	var failing []string
+	if len(inCell) < Current.Gates.MinVolume {
+		failing = append(failing, "volume")
+	}
+	sources := map[string]bool{}
+	var freshest time.Time
+	for _, o := range inCell {
+		sources[o.Source] = true
+		if o.ObservedAt.After(freshest) {
+			freshest = o.ObservedAt
+		}
+	}
+	if len(sources) < Current.Gates.MinSources {
+		failing = append(failing, "sources")
+	}
+	if freshest.IsZero() || now.Sub(freshest).Hours()/24.0 >= Current.Gates.MaxAgeDays {
+		failing = append(failing, "freshness")
+	}
+	if p25 <= 0 || p75/p25 >= Current.Gates.MaxIQRRatio {
+		failing = append(failing, "dispersion")
+	}
+	return failing
+}
+
 // ComputeVerdict computes the fair-value verdict for one cell.
-// Returns nil when the cell has fewer than MinSamples observations.
+// Returns nil when the cell has fewer than Current.MinSamples observations.
 func ComputeVerdict(brand, model, dial, material, scope string, observations []Observation, now time.Time) *Verdict {
 	// Defense in depth: only observations belonging to the exact queried cell
 	// may contribute. Wrong-cell data can never leak into a verdict.
@@ -114,12 +203,12 @@ func ComputeVerdict(brand, model, dial, material, scope string, observations []O
 			inCell = append(inCell, o)
 		}
 	}
-	if len(inCell) < MinSamples {
+	if len(inCell) < Current.MinSamples {
 		return nil
 	}
 	observations = inCell
 
-	if len(observations) < MinSamples {
+	if len(observations) < Current.MinSamples {
 		return nil
 	}
 
@@ -132,7 +221,7 @@ func ComputeVerdict(brand, model, dial, material, scope string, observations []O
 		}
 	}
 	kept := trimTypicalBand(prices)
-	if len(kept) < MinSamples {
+	if len(kept) < Current.MinSamples {
 		return nil
 	}
 
@@ -161,49 +250,61 @@ func ComputeVerdict(brand, model, dial, material, scope string, observations []O
 	p75 := sorted[3*(n-1)/4]
 
 	confidence := "low"
-	if n >= HighConfidence {
+	if n >= Current.HighConfidence {
 		confidence = "high"
-	} else if n >= MediumConfidence {
+	} else if n >= Current.MediumConfidence {
 		confidence = "medium"
 	}
 
-	// receipts: the most recent MaxReceipts observations
+	// receipts: the most recent Current.MaxReceipts observations
 	recent := make([]Observation, len(trimmed))
 	copy(recent, trimmed)
 	sort.Slice(recent, func(i, j int) bool {
 		return recent[i].ObservedAt.After(recent[j].ObservedAt)
 	})
-	receipts := make([]Receipt, 0, MaxReceipts)
+	receipts := make([]Receipt, 0, Current.MaxReceipts)
 	for i, o := range recent {
-		if i >= MaxReceipts {
+		if i >= Current.MaxReceipts {
 			break
 		}
 		receipts = append(receipts, Receipt{
-			Title:  o.Title,
-			Price:  o.PriceUSD,
-			URL:    o.URL,
-			Date:   o.ObservedAt.Format("2006-01"),
-			Source: o.Source,
-			Ref:    o.Ref,
+			Title:    o.Title,
+			Price:    o.PriceUSD,
+			URL:      o.URL,
+			Date:     o.ObservedAt.Format("2006-01"),
+			Source:   o.Source,
+			Ref:      o.Ref,
+			ImageURL: o.ImageURL,
 		})
 	}
 
+	// Eligibility gates (PLAN.md §7.4) — evaluated on the exact-tier set.
+	failing := EvaluateGates(inCell, p25, p75, now)
+	status := "pass"
+	if len(failing) > 0 {
+		status = "limited"
+	}
+
 	return &Verdict{
-		CellKey:    CellKey(brand, model, dial, material, scope),
-		Brand:      brand,
-		Model:      model,
-		Dial:       dial,
-		Material:   material,
-		Scope:      scope,
-		FairLow:    p25,
-		FairHigh:   p75,
-		Median:     median,
-		P25:        p25,
-		P75:        p75,
-		Count:      n,
-		Confidence: confidence,
-		ComputedAt: now,
-		Receipts:   receipts,
+		GatesStatus:  status,
+		FailingGates: failing,
+		RulesetHash:  Current.Hash(),
+		InputsHash:   InputsHash(CellKey(brand, model, dial, material, scope), inCell),
+		CellKey:      CellKey(brand, model, dial, material, scope),
+		Brand:        brand,
+		Model:        model,
+		Dial:         dial,
+		Material:     material,
+		Scope:        scope,
+		FairLow:      p25,
+		FairHigh:     p75,
+		Median:       median,
+		P25:          p25,
+		P75:          p75,
+		Count:        n,
+		Confidence:   confidence,
+		ComputedAt:   now,
+		Receipts:     receipts,
 	}
 }
 
@@ -214,7 +315,7 @@ func weightedMedian(observations []Observation, now time.Time) float64 {
 	pairs := make([]pair, 0, len(observations))
 	for _, o := range observations {
 		ageDays := now.Sub(o.ObservedAt).Hours() / 24.0
-		w := math.Pow(0.5, ageDays/HalfLifeDays)
+		w := math.Pow(0.5, ageDays/Current.HalfLifeDays)
 		pairs = append(pairs, pair{o.PriceUSD, w})
 	}
 	sort.Slice(pairs, func(i, j int) bool { return pairs[i].price < pairs[j].price })
@@ -243,9 +344,9 @@ func trimTypicalBand(prices []float64) []float64 {
 	copy(sorted, prices)
 	sort.Float64s(sorted)
 	kept := sorted
-	for i := 0; i < TrimIterations; i++ {
+	for i := 0; i < Current.TrimIterations; i++ {
 		median := kept[len(kept)/2]
-		lo, hi := median*TrimLowMult, median*TrimHighMult
+		lo, hi := median*Current.TrimLowMult, median*Current.TrimHighMult
 		var next []float64
 		for _, p := range kept {
 			if p >= lo && p <= hi {

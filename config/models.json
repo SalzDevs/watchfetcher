@@ -3,17 +3,18 @@
     "Rolex": [
       "Submariner Date", "Submariner No-Date", "GMT-Master II",
       "Cosmograph Daytona", "Datejust", "Day-Date", "Explorer II",
-      "Explorer", "Sea-Dweller", "Yacht-Master", "Sky-Dweller",
-      "Air-King", "Oyster Perpetual"
+      "Explorer", "Sea-Dweller", "Yacht-Master", "Yacht-Master II", "Sky-Dweller",
+      "Air-King", "Oyster Perpetual", "Milgauss", "Land-Dweller", "Perpetual 1908"
     ],
-    "Patek Philippe": ["Nautilus", "Aquanaut", "Calatrava", "Golden Ellipse"],
-    "Audemars Piguet": ["Royal Oak", "Royal Oak Offshore"],
+    "Patek Philippe": ["Nautilus", "Aquanaut", "Calatrava", "Golden Ellipse", "Twenty~4", "Complications", "Grand Complications", "Cubitus"],
+    "Audemars Piguet": ["Royal Oak", "Royal Oak Offshore", "Code 11.59"],
     "Vacheron Constantin": ["Overseas", "Patrimony", "Traditionnelle", "Historiques"],
     "Richard Mille": ["RM 011", "RM 030", "RM 35", "RM 67"],
     "Omega": [
       "Speedmaster Professional", "Speedmaster",
       "Seamaster Diver 300M", "Seamaster Aqua Terra",
-      "Seamaster Planet Ocean", "Constellation"
+      "Seamaster Planet Ocean", "Constellation",
+      "Railmaster", "Seamaster Ploprof"
     ],
     "Cartier": ["Santos de Cartier", "Tank Must", "Ballon Bleu", "Panthère", "Santos-Dumont"],
     "Breitling": ["Navitimer", "Chronomat", "Superocean Heritage", "Avenger", "Premier"],
@@ -23,14 +24,206 @@
     "A. Lange & Söhne": ["Lange 1", "Saxonia", "Odysseus", "1815"],
     "Tudor": [
       "Black Bay 58", "Black Bay GMT", "Black Bay Chrono", "Black Bay",
-      "Pelagos", "Royal"
+      "Pelagos", "Royal", "Ranger"
     ],
     "Hublot": ["Classic Fusion", "Big Bang"],
-    "Panerai": ["Luminor", "Luminor Marina", "Radiomir", "Submersible"],
+    "Panerai": ["Luminor Marina", "Luminor", "Radiomir", "Submersible"],
     "TAG Heuer": ["Carrera", "Monaco", "Aquaracer", "Formula 1"],
     "Longines": ["Master Collection", "Conquest", "HydroConquest", "Spirit"],
     "Grand Seiko": ["Snowflake", "Spring Drive GMT", "Hi-Beat 36000"],
     "Chopard": ["Happy Sport", "Mille Miglia", "L.U.C"],
     "Bulgari": ["Octo Finissimo", "Octo Roma", "Serpenti", "Aluminium"]
+  },
+  "references": {
+    "Rolex": {
+      "Submariner Date": [
+        {"ref": "126610LN", "dial": "black", "material": "steel"},
+        {"ref": "126610LV", "dial": "green", "material": "steel"},
+        {"ref": "126613LB", "dial": "blue", "material": "two_tone"},
+        {"ref": "126613LN", "dial": "black", "material": "two_tone"},
+        {"ref": "126618LB", "dial": "blue", "material": "gold"},
+        {"ref": "116610LN", "dial": "black", "material": "steel"},
+        {"ref": "116610LV", "dial": "green", "material": "steel"}
+      ],
+      "Submariner No-Date": [
+        {"ref": "124060", "dial": "black", "material": "steel"},
+        {"ref": "114060", "dial": "black", "material": "steel"},
+        {"ref": "14060M", "dial": "black", "material": "steel"}
+      ],
+      "GMT-Master II": [
+        {"ref": "126710BLRO", "dial": "pepsi", "material": "steel"},
+        {"ref": "126710BLNR", "dial": "batman", "material": "steel"},
+        {"ref": "126711CHNR", "dial": "brown", "material": "two_tone"},
+        {"ref": "126715CHNR", "dial": "brown", "material": "gold"},
+        {"ref": "126718GRNR", "dial": "black", "material": "gold"},
+        {"ref": "126720VTNR", "dial": "black", "material": "steel"},
+        {"ref": "116710BLNR", "dial": "batman", "material": "steel"},
+        {"ref": "116710LN", "dial": "black", "material": "steel"},
+        {"ref": "116713LN", "dial": "black", "material": "two_tone"},
+        {"ref": "16710", "dial": "", "material": "steel"}
+      ],
+      "Cosmograph Daytona": [
+        {"ref": "126500LN", "dial": "", "material": "steel"},
+        {"ref": "126518LN", "dial": "", "material": "gold"},
+        {"ref": "126519LN", "dial": "", "material": "gold"},
+        {"ref": "116500LN", "dial": "", "material": "steel"},
+        {"ref": "116520", "dial": "", "material": "steel"},
+        {"ref": "116518LN", "dial": "", "material": "gold"},
+        {"ref": "116506", "dial": "blue", "material": "platinum"},
+        {"ref": "16520", "dial": "", "material": "steel"}
+      ],
+      "Datejust": [
+        {"ref": "126200", "dial": "", "material": "steel"},
+        {"ref": "126234", "dial": "", "material": "two_tone"},
+        {"ref": "126300", "dial": "", "material": "steel"},
+        {"ref": "126334", "dial": "", "material": "two_tone"},
+        {"ref": "116234", "dial": "", "material": "two_tone"}
+      ],
+      "Day-Date": [
+        {"ref": "228238", "dial": "", "material": "gold"},
+        {"ref": "228239", "dial": "", "material": "gold"},
+        {"ref": "228235", "dial": "", "material": "gold"},
+        {"ref": "118238", "dial": "", "material": "gold"}
+      ],
+      "Explorer": [
+        {"ref": "124270", "dial": "black", "material": "steel"},
+        {"ref": "214270", "dial": "black", "material": "steel"}
+      ],
+      "Explorer II": [
+        {"ref": "226570", "dial": "", "material": "steel"},
+        {"ref": "216570", "dial": "", "material": "steel"},
+        {"ref": "16570", "dial": "", "material": "steel"}
+      ],
+      "Sea-Dweller": [
+        {"ref": "126600", "dial": "black", "material": "steel"},
+        {"ref": "136660", "dial": "black", "material": "steel"},
+        {"ref": "116660", "dial": "black", "material": "steel"},
+        {"ref": "16600", "dial": "black", "material": "steel"}
+      ],
+      "Yacht-Master": [
+        {"ref": "126622", "dial": "", "material": "steel"},
+        {"ref": "116622", "dial": "", "material": "steel"}
+      ],
+      "Air-King": [
+        {"ref": "126900", "dial": "black", "material": "steel"},
+        {"ref": "116900", "dial": "black", "material": "steel"}
+      ],
+      "Oyster Perpetual": [
+        {"ref": "124300", "dial": "", "material": "steel"},
+        {"ref": "126000", "dial": "", "material": "steel"}
+      ]
+    },
+    "Patek Philippe": {
+      "Nautilus": [
+        {"ref": "5711/1A-010", "dial": "blue", "material": "steel"},
+        {"ref": "5711/1R-001", "dial": "brown", "material": "gold"},
+        {"ref": "5811/1G-001", "dial": "blue", "material": "gold"},
+        {"ref": "5990/1A-001", "dial": "", "material": "steel"},
+        {"ref": "5712/1A-001", "dial": "blue", "material": "steel"},
+        {"ref": "5980/1A-001", "dial": "blue", "material": "steel"},
+        {"ref": "3800/1A", "dial": "blue", "material": "steel"}
+      ],
+      "Aquanaut": [
+        {"ref": "5167A-001", "dial": "black", "material": "steel"},
+        {"ref": "5165A-001", "dial": "black", "material": "steel"},
+        {"ref": "5168G-001", "dial": "blue", "material": "gold"},
+        {"ref": "5164A-001", "dial": "black", "material": "steel"}
+      ],
+      "Calatrava": [
+        {"ref": "5226G-001", "dial": "black", "material": "gold"}
+      ]
+    },
+    "Audemars Piguet": {
+      "Royal Oak": [
+        {"ref": "15500ST", "dial": "", "material": "steel"},
+        {"ref": "15500OR", "dial": "", "material": "gold"},
+        {"ref": "15510ST", "dial": "", "material": "steel"},
+        {"ref": "16202ST", "dial": "", "material": "steel"},
+        {"ref": "26240ST", "dial": "", "material": "steel"},
+        {"ref": "15400ST", "dial": "", "material": "steel"},
+        {"ref": "15202ST", "dial": "", "material": "steel"}
+      ],
+      "Royal Oak Offshore": [
+        {"ref": "26238ST", "dial": "", "material": "steel"},
+        {"ref": "26470ST", "dial": "", "material": "steel"}
+      ]
+    },
+    "Omega": {
+      "Speedmaster Professional": [
+        {"ref": "310.30.42.50.01.001", "dial": "black", "material": "steel"},
+        {"ref": "310.30.42.50.03.001", "dial": "blue", "material": "steel"},
+        {"ref": "3570.50.00", "dial": "black", "material": "steel"}
+      ],
+      "Speedmaster": [
+        {"ref": "311.30.42.30.01.005", "dial": "black", "material": "steel"}
+      ],
+      "Seamaster Diver 300M": [
+        {"ref": "210.30.42.20.01.001", "dial": "black", "material": "steel"},
+        {"ref": "210.30.42.20.03.001", "dial": "blue", "material": "steel"},
+        {"ref": "2254.50.00", "dial": "black", "material": "steel"}
+      ],
+      "Seamaster Aqua Terra": [
+        {"ref": "220.10.41.21.03.001", "dial": "blue", "material": "steel"},
+        {"ref": "231.10.42.21.03.001", "dial": "blue", "material": "steel"}
+      ],
+      "Seamaster Planet Ocean": [
+        {"ref": "215.30.44.21.01.001", "dial": "black", "material": "steel"},
+        {"ref": "215.30.44.21.03.001", "dial": "blue", "material": "steel"}
+      ],
+      "Railmaster": [
+        {"ref": "220.10.40.20.01.001", "dial": "black", "material": "steel"}
+      ]
+    },
+    "Tudor": {
+      "Black Bay 58": [
+        {"ref": "79030N", "dial": "black", "material": "steel"},
+        {"ref": "79030B", "dial": "blue", "material": "steel"}
+      ],
+      "Black Bay GMT": [
+        {"ref": "79830RB", "dial": "pepsi", "material": "steel"}
+      ],
+      "Black Bay Chrono": [
+        {"ref": "79360N", "dial": "black", "material": "steel"}
+      ],
+      "Black Bay": [
+        {"ref": "79230N", "dial": "black", "material": "steel"},
+        {"ref": "79230R", "dial": "", "material": "steel"},
+        {"ref": "79000N", "dial": "black", "material": "steel"}
+      ],
+      "Pelagos": [
+        {"ref": "25600TN", "dial": "black", "material": "titanium"},
+        {"ref": "25600TB", "dial": "blue", "material": "titanium"}
+      ],
+      "Ranger": [
+        {"ref": "79950", "dial": "black", "material": "steel"}
+      ]
+    },
+    "Cartier": {
+      "Santos de Cartier": [
+        {"ref": "WSSA0018", "dial": "blue", "material": "steel"}
+      ]
+    },
+    "Vacheron Constantin": {
+      "Overseas": [
+        {"ref": "4500V/110A-B483", "dial": "blue", "material": "steel"}
+      ]
+    },
+    "Panerai": {
+      "Luminor Marina": [
+        {"ref": "PAM01312", "dial": "black", "material": "steel"}
+      ]
+    },
+    "IWC": {
+      "Big Pilot": [
+        {"ref": "IW329301", "dial": "black", "material": "steel"},
+        {"ref": "IW501001", "dial": "black", "material": "steel"}
+      ]
+    },
+    "Grand Seiko": {
+      "Snowflake": [
+        {"ref": "SBGA211", "dial": "silver", "material": "titanium"},
+        {"ref": "SBGA413", "dial": "salmon", "material": "titanium"}
+      ]
+    }
   }
 }

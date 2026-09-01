@@ -7,22 +7,91 @@ import (
 	"sync"
 )
 
-// The curated taxonomy: 20 maisons and their model families. This is the
-// single source of truth for brand/model detection at engine ingest.
+//go:generate go run ../../tools/genref
+
+// Reference is one factory SKU: an indivisible {case, bracelet, dial, bezel,
+// material} combination. You don't configure 126610LN with a green dial —
+// that watch is a 126610LV. Dial and material are derived from the reference,
+// never free-text.
+type Reference struct {
+	Ref      string
+	Brand    string
+	Model    string
+	Dial     string // "" = reference exists but dial not pinned in taxonomy
+	Material string
+}
+
+// LookupRef resolves a reference number to its factory configuration.
+// Exact match first. If the input is a base prefix of catalogued refs
+// (marketplaces truncate "5711/1A-010" to "5711"), all matching entries must
+// agree on {brand, model, dial, material} — an ambiguous prefix (5711 = blue
+// steel OR brown gold) matches nothing rather than guessing.
+func LookupRef(ref string) (Reference, bool) {
+	key := strings.ToUpper(strings.TrimSpace(ref))
+	if key == "" {
+		return Reference{}, false
+	}
+	if e, ok := referenceIndex[key]; ok {
+		return Reference{Ref: key, Brand: e.Brand, Model: e.Model, Dial: e.Dial, Material: e.Material}, true
+	}
+	// Prefix aggregation: ref is a base of "base/suffix" (5711/1A-010) or
+	// "base-dialcode" (5167A-001) style references — marketplaces truncate both.
+	var hit *refEntry
+	for k, e := range referenceIndex {
+		if !strings.HasPrefix(k, key+"/") && !strings.HasPrefix(k, key+"-") {
+			continue
+		}
+		if hit == nil {
+			e := e
+			hit = &e
+			continue
+		}
+		// Ambiguous: two catalogued refs share this base with different configs.
+		if *hit != e {
+			return Reference{}, false
+		}
+	}
+	if hit != nil {
+		return Reference{Ref: key, Brand: hit.Brand, Model: hit.Model, Dial: hit.Dial, Material: hit.Material}, true
+	}
+	return Reference{}, false
+}
+
+// ReferencesForModel returns the catalogued references for one brand+model
+// family, sorted by ref. Empty slice when the family has no catalogued refs
+// (vintage / free-dial models).
+func ReferencesForModel(brand, model string) []Reference {
+	var out []Reference
+	for ref, e := range referenceIndex {
+		if strings.EqualFold(e.Brand, strings.TrimSpace(brand)) && strings.EqualFold(e.Model, strings.TrimSpace(model)) {
+			out = append(out, Reference{Ref: ref, Brand: e.Brand, Model: e.Model, Dial: e.Dial, Material: e.Material})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Ref < out[j].Ref })
+	return out
+}
+
+// ReferenceCount returns the total number of catalogued references.
+func ReferenceCount() int { return len(referenceIndex) }
+
+// The curated taxonomy: 20 maisons and their model families — 2025 catalogue.
+// This is the single source of truth for brand/model detection at engine ingest.
+// Generated from config/models.json — do not edit by hand (go generate).
 var brandModels = map[string][]string{
 	"Rolex": {
 		"Submariner Date", "Submariner No-Date", "GMT-Master II",
 		"Cosmograph Daytona", "Datejust", "Day-Date", "Explorer II",
-		"Explorer", "Sea-Dweller", "Yacht-Master", "Sky-Dweller",
-		"Air-King", "Oyster Perpetual",
+		"Explorer", "Sea-Dweller", "Yacht-Master", "Yacht-Master II", "Sky-Dweller",
+		"Air-King", "Oyster Perpetual", "Milgauss", "Land-Dweller", "Perpetual 1908",
 	},
-	"Patek Philippe":    {"Nautilus", "Aquanaut", "Calatrava", "Golden Ellipse"},
-	"Audemars Piguet":   {"Royal Oak Offshore", "Royal Oak"},
+	"Patek Philippe":    {"Nautilus", "Aquanaut", "Calatrava", "Golden Ellipse", "Twenty~4", "Complications", "Grand Complications", "Cubitus"},
+	"Audemars Piguet":   {"Royal Oak", "Royal Oak Offshore", "Code 11.59"},
 	"Vacheron Constantin": {"Overseas", "Patrimony", "Traditionnelle", "Historiques"},
 	"Richard Mille":     {"RM 011", "RM 030", "RM 35", "RM 67"},
 	"Omega": {
 		"Speedmaster Professional", "Speedmaster", "Seamaster Diver 300M",
 		"Seamaster Aqua Terra", "Seamaster Planet Ocean", "Constellation",
+		"Railmaster", "Seamaster Ploprof",
 	},
 	"Cartier":  {"Santos de Cartier", "Tank Must", "Ballon Bleu", "Panthère", "Santos-Dumont"},
 	"Breitling": {"Navitimer", "Chronomat", "Superocean Heritage", "Avenger", "Premier"},
@@ -32,7 +101,7 @@ var brandModels = map[string][]string{
 	"A. Lange & Söhne": {"Lange 1", "Saxonia", "Odysseus", "1815"},
 	"Tudor": {
 		"Black Bay 58", "Black Bay GMT", "Black Bay Chrono", "Black Bay",
-		"Pelagos", "Royal",
+		"Pelagos", "Royal", "Ranger",
 	},
 	"Hublot":    {"Classic Fusion", "Big Bang"},
 	"Panerai":   {"Luminor Marina", "Luminor", "Radiomir", "Submersible"},
@@ -48,6 +117,29 @@ func Brands() []string {
 	out := make([]string, 0, len(brandModels))
 	for b := range brandModels {
 		out = append(out, b)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ModelsForBrand returns sorted models for a brand (case-insensitive), or nil if unknown.
+func ModelsForBrand(brand string) []string {
+	for b, ms := range brandModels {
+		if strings.EqualFold(b, strings.TrimSpace(brand)) {
+			out := make([]string, len(ms))
+			copy(out, ms)
+			sort.Strings(out)
+			return out
+		}
+	}
+	return nil
+}
+
+// AllModels returns all models across brands sorted (for search).
+func AllModels() []string {
+	var out []string
+	for _, ms := range brandModels {
+		out = append(out, ms...)
 	}
 	sort.Strings(out)
 	return out
@@ -159,6 +251,31 @@ func DetectModelFamily(text string) string {
 		}
 	}
 	return ""
+}
+
+// CuratedImagePath is the convention for curated reference art:
+// /watches/{brand-slug}/{model-slug}/{REF}.webp. Missing files fall back to
+// receipt images (onError in the frontend) — curated is an override, not a
+// requirement. Used by API responses and the image harvester.
+func CuratedImagePath(brand, model, ref string) string {
+	slug := func(s string) string {
+		s = strings.ToLower(strings.TrimSpace(s))
+		var b strings.Builder
+		dash := false
+		for _, c := range s {
+			if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') {
+				if dash {
+					b.WriteRune('-')
+					dash = false
+				}
+				b.WriteRune(c)
+			} else if b.Len() > 0 {
+				dash = true
+			}
+		}
+		return b.String()
+	}
+	return "/watches/" + slug(brand) + "/" + slug(model) + "/" + strings.ToUpper(strings.TrimSpace(ref)) + ".webp"
 }
 
 func containsWord(text, word string) bool {

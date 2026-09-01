@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"watchfetcher/internal/crawl"
 	"watchfetcher/internal/httpclient"
 	wfmodel "watchfetcher/internal/model"
 )
@@ -71,12 +72,9 @@ func (w *WatchfinderSource) Fetch(ctx context.Context, client *httpclient.Client
 			pageParam = fmt.Sprintf("&p=%d", page)
 		}
 		u := wfBase + "/catalogsearch/result/?q=" + url.QueryEscape(q) + pageParam
-		status, body, err := client.Get(ctx, u)
+		_, body, err := crawl.DoGetWithRetry(ctx, client, w.ID(), u, nil)
 		if err != nil {
 			return out, fmt.Errorf("watchfinder fetch: %w", err)
-		}
-		if status != 200 {
-			return out, fmt.Errorf("watchfinder returned HTTP %d", status)
 		}
 		cards := parseWatchfinderCards(body)
 		fresh := 0

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"watchfetcher/internal/attrs"
+	"watchfetcher/internal/crawl"
 	"watchfetcher/internal/httpclient"
 	wfmodel "watchfetcher/internal/model"
 )
@@ -55,7 +56,7 @@ func (t *The1916CompanySource) guestToken(ctx context.Context, client *httpclien
 		"%s/shopper/auth/v1/organizations/%s/oauth2/authorize?redirect_uri=%s&response_type=code&client_id=%s&hint=guest&channel_id=%s&code_challenge=%s",
 		tccProxy, tccOrg, url.QueryEscape(tccCallback), tccClientID, tccSite, challenge,
 	)
-	status, location, _, err := client.GetNoRedirect(ctx, authURL)
+	status, location, _, err := crawl.DoGetNoRedirectRetry(ctx, client, t.ID(), authURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("1916 authorize: %w", err)
 	}
@@ -76,11 +77,11 @@ func (t *The1916CompanySource) guestToken(ctx context.Context, client *httpclien
 	form.Set("client_id", tccClientID)
 	form.Set("channel_id", tccSite)
 	form.Set("redirect_uri", tccCallback)
-	status, respBody, err := client.PostForm(ctx,
+	_, respBody, err := crawl.DoPostFormRetry(ctx, client, t.ID(),
 		fmt.Sprintf("%s/shopper/auth/v1/organizations/%s/oauth2/token", tccProxy, tccOrg),
-		map[string]string{"Accept": "application/json"}, form.Encode())
-	if err != nil || status != 200 {
-		return "", fmt.Errorf("1916 token exchange failed (HTTP %d)", status)
+		map[string]string{"Accept": "application/json"}, form.Encode(), nil)
+	if err != nil {
+		return "", fmt.Errorf("1916 token exchange failed: %w", err)
 	}
 	var parsed struct {
 		AccessToken string `json:"access_token"`
@@ -114,7 +115,7 @@ type tccProduct struct {
 }
 
 func (t *The1916CompanySource) getJSON(ctx context.Context, client *httpclient.Client, u string, headers map[string]string) (int, string, error) {
-	return client.GetWithHeaders(ctx, u, headers)
+	return crawl.DoGetWithHeadersRetry(ctx, client, t.ID(), u, headers, nil)
 }
 
 func (t *The1916CompanySource) Fetch(ctx context.Context, client *httpclient.Client, brand, model string, maxPerModel int) ([]wfmodel.Listing, error) {

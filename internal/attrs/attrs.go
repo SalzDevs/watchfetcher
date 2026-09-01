@@ -59,6 +59,8 @@ func DetectDial(text string) string {
 // --- material ---------------------------------------------------------------
 
 var (
+	reTitanium   = regexp.MustCompile(`\btitan(?:ium)?\b|\bRLX\b`)
+	reCeramic    = regexp.MustCompile(`\bceramic\b|\bceramique\b|\bcerachrom\b`)
 	rePlatinum   = regexp.MustCompile(`platin(?:um|e)|\b950\s?pt\b`)
 	reTwoTone    = regexp.MustCompile(`two[\s-]?tone|rolesor|bicolou?r|steel\s*(?:and|&|/|\s)\s*(?:18k?\s*)?gold|(?:18k?\s*)?gold\s*(?:and|&|/|\s)\s*steel|acier\s+et\s+or`)
 	reGold       = regexp.MustCompile(`\b(?:18|14)[- ]?k(?:arat)?\b|\byg\b|\brg\b|\bwg\b|pink\s+gold|rose\s+gold|yellow\s+gold|white\s+gold|\bgold\b|gelbgold|weissgold|rotgold`)
@@ -67,14 +69,19 @@ var (
 	reRefSuffix2 = regexp.MustCompile(`\b\d{5,6}(OR|ST)\.(OO\.[0-9A-Z]{2,8})?`)
 )
 
-// DetectMaterial classifies case material. Priority: platinum > two-tone >
-// gold > steel > reference-suffix codes (Patek/AP conventions).
+// DetectMaterial classifies case material. Priority: titanium > ceramic >
+// platinum > two-tone > gold > steel > reference-suffix codes (Patek/AP conventions).
+// RLX Titanium (Yacht-Master 42, Deepsea Challenge) and Cerachrom/Ceramic are distinct.
 func DetectMaterial(text string) string {
 	t := strings.ToLower(text)
 	if t == "" {
 		return ""
 	}
 	switch {
+	case reTitanium.MatchString(t):
+		return "titanium"
+	case reCeramic.MatchString(t):
+		return "ceramic"
 	case rePlatinum.MatchString(t):
 		return "platinum"
 	case reTwoTone.MatchString(t):
@@ -149,8 +156,8 @@ func DetectScope(text string) string {
 	case findAllNotNegated(rePapersOnly, low):
 		return "papers_only"
 	}
-	hasBox := reHasBox.MatchString(low)
-	hasPapers := reHasPapers.MatchString(low)
+	hasBox := findAllNotNegated(reHasBox, low)
+	hasPapers := findAllNotNegated(reHasPapers, low)
 	switch {
 	case hasBox && hasPapers:
 		return "full_set"
@@ -169,10 +176,10 @@ var refPatterns = []struct {
 	upper bool
 }{
 	{regexp.MustCompile(`(?i)^(?:3\d{13}|\d{3}\.\d{2}\.\d{2}\.\d{2}\.\d{2}\.\d{3}|\d{3}\.\d{2}\.\d{2}\.\d{2}\.\d{3})$`), false},  // Omega
-	{regexp.MustCompile(`(?i)^(?:1[12]\d{4}[A-Z]{0,4}|2[12]\d{4}[A-Z]{0,4}|1[4-7]\d{3}[A-Z]{0,2})$`), true},                    // Rolex
+	{regexp.MustCompile(`(?i)^(?:1[12]\d{4}[A-Z]{0,4}|1[34]\d{4}[A-Z]{0,4}|525\d{2}[A-Z]{0,2}|2[12]\d{4}[A-Z]{0,4}|1[4-7]\d{3}[A-Z]{0,2})$`), true}, // Rolex inc. 134xxx Land-Dweller/Oyster 2025 + 525xx 1908
 	{regexp.MustCompile(`(?i)^(?:M?79\d{3}[A-Z]{0,2}|M?25\d{3}[A-Z]{0,2})$`), true},                                            // Tudor
 	{regexp.MustCompile(`(?i)^(?:CR)?W[A-Z0-9]{7,8}$`), true},                                                                  // Cartier
-	{regexp.MustCompile(`(?i)^(?:1[56]\d{3}[A-Z]{2}|[35]\d{3}[A-Z0-9/]{0,3}|IW\d{6}|SBG[A-Z0-9]{3,5})$`), true},                // AP/Patek/IWC
+	{regexp.MustCompile(`(?i)^(?:1[56]\d{3}[A-Z]{2}|[35]\d{3}[A-Z0-9/]{0,3}|7128\/[A-Z0-9]+|IW\d{6}|SBG[A-Z0-9]{3,5})$`), true}, // AP/Patek/IWC + Cubitus 7128
 }
 
 var refSplit = regexp.MustCompile(`[/_?#&=+\s\-]+`)
@@ -201,4 +208,21 @@ func ExtractRef(text string) string {
 func wordBoundaryMatch(kw, t string) bool {
 	re := regexp.MustCompile(`\b` + kw + `\b`)
 	return re.MatchString(t)
+}
+
+// Dials returns canonical dial values (excluding unknown).
+// gold dial kept but only counts near dial/bezel, so "yellow gold" case doesn't trigger.
+func Dials() []string {
+	out := []string{"batgirl", "batman", "black", "blue", "brown", "champagne", "gold", "green", "grey", "meteorite", "panda", "pepsi", "salmon", "silver", "tiffany", "tropical", "white"}
+	return out
+}
+
+// Materials returns canonical material values — 2025 adds titanium/ceramic (RLX, Cerachrom).
+func Materials() []string {
+	return []string{"ceramic", "gold", "platinum", "steel", "titanium", "two_tone"}
+}
+
+// Scopes returns canonical scope values.
+func Scopes() []string {
+	return []string{"box_only", "full_set", "naked", "papers_only"}
 }
