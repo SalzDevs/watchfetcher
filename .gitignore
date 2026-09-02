@@ -1,1 +1,9 @@
-*.ndjson
+# ledger databases — the ledger is in prod volumes + snapshots, not git
+data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+bin/
+*.tsbuildinfo
+node_modules/
+.DS_Store

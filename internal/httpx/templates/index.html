@@ -1,0 +1,65 @@
+{{define "home.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — what people actually paid</title>
+  <style>
+    :root { --ink:#101418; --paper:#f6f4ef; --brass:#a3762a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font: 16px/1.6 Georgia, 'Times New Roman', serif; background: var(--paper); color: var(--ink); }
+    main { max-width: 46rem; margin: 0 auto; padding: 4rem 1.5rem; }
+    h1 { font-size: 2rem; letter-spacing: -0.02em; margin: 0 0 .5rem; }
+    .thesis { font-size: 1.15rem; font-style: italic; color: #444; margin-bottom: 2.5rem; }
+    .principles { border-top: 1px solid #d8d3c8; }
+    .principles div { padding: 1rem 0; border-bottom: 1px solid #d8d3c8; }
+    .principles b { display: block; }
+    footer { margin-top: 3rem; font-size: .8rem; color: #777; font-family: ui-monospace, monospace; }
+    a { color: var(--brass); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>WatchLedger</h1>
+  <p class="thesis">Paste the link. We'll tell you if the price is fair — and show you why.</p>
+  <div class="principles">
+    <div><b>Evidence before verdict</b> The comparable set and its quality, shown before the conclusion.</div>
+    <div><b>Honest uncertainty</b> "We don't know yet" is a valid, valuable output — never a failure state.</div>
+    <div><b>No transaction interest</b> We never earn more when you buy. That is the entire product.</div>
+  </div>
+  <footer>
+    under construction — Phase 0: the ledger is being built · <a href="/methodology">methodology</a>
+  </footer>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "methodology.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; background:#f6f4ef; color:#101418; }
+    main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem; }
+    pre { background:#101418; color:#e8e4da; padding:1rem; border-radius:8px; overflow:auto; }
+    .hash { color:#a3762a; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Methodology</h1>
+  <p>Every published number is produced by the versioned ruleset below. Nothing else.
+     Same evidence + same rules = same verdict, forever. Re-derive any verdict
+     from its stored evidence plus this definition.</p>
+  <p>Active ruleset: <b>{{.Version}}</b> · hash <span class="hash">{{.Hash}}</span></p>
+  <pre>{{json .Ruleset}}</pre>
+  <p><a href="/">← home</a></p>
+</main>
+</body>
+</html>
+{{end}}

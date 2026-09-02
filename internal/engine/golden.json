@@ -1,0 +1,459 @@
+{
+  "ruleset": {
+    "version": "v1.0.0",
+    "min_samples": 4,
+    "high_confidence": 20,
+    "medium_confidence": 8,
+    "half_life_days": 900,
+    "trim_low_mult": 0.2,
+    "trim_high_mult": 2.2,
+    "trim_iterations": 2,
+    "max_receipts": 12,
+    "gates": {
+      "min_volume": 8,
+      "min_sources": 3,
+      "max_age_days": 180,
+      "max_iqr_ratio": 2.5
+    }
+  },
+  "fixed_now": "2026-09-01T12:00:00Z",
+  "scenarios": [
+    {
+      "name": "pass_all_gates",
+      "brand": "Rolex",
+      "model": "Submariner Date",
+      "dial": "black",
+      "material": "steel",
+      "scope": "",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "Submariner Date 126610LN",
+          "price_usd": "13800",
+          "days_ago": 30
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN box",
+          "price_usd": "14200",
+          "days_ago": 60
+        },
+        {
+          "source": "bobswatches",
+          "title": "Submariner Date black",
+          "price_usd": "14000",
+          "days_ago": 45
+        },
+        {
+          "source": "bobswatches",
+          "title": "126610LN",
+          "price_usd": "14500",
+          "days_ago": 90
+        },
+        {
+          "source": "auction_a",
+          "title": "Submariner Date realised",
+          "price_usd": "12900",
+          "days_ago": 15
+        },
+        {
+          "source": "auction_b",
+          "title": "126610LN realised",
+          "price_usd": "13100",
+          "days_ago": 40
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set",
+          "price_usd": "15100",
+          "days_ago": 75
+        },
+        {
+          "source": "bobswatches",
+          "title": "Submariner Date",
+          "price_usd": "14400",
+          "days_ago": 120
+        },
+        {
+          "source": "watchfinder",
+          "title": "126610LN steel black",
+          "price_usd": "13900",
+          "days_ago": 10
+        },
+        {
+          "source": "auction_c",
+          "title": "Submariner LN",
+          "price_usd": "13400",
+          "days_ago": 55
+        },
+        {
+          "source": "chrono24",
+          "title": "Rolex Sub LN",
+          "price_usd": "14100",
+          "days_ago": 5
+        },
+        {
+          "source": "bobswatches",
+          "title": "Submariner Date black",
+          "price_usd": "14600",
+          "days_ago": 35
+        }
+      ],
+      "expected": {
+        "count": 12,
+        "median": "14000",
+        "p10": "13100",
+        "p90": "14600",
+        "gates_status": "pass",
+        "failing_gates": null
+      }
+    },
+    {
+      "name": "fail_volume",
+      "brand": "Rolex",
+      "model": "Submariner Date",
+      "dial": "green",
+      "material": "steel",
+      "scope": "",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "126610LV hulk",
+          "price_usd": "17800",
+          "days_ago": 30
+        },
+        {
+          "source": "bobswatches",
+          "title": "126610LV green",
+          "price_usd": "18200",
+          "days_ago": 60
+        },
+        {
+          "source": "auction_a",
+          "title": "126610LV realised",
+          "price_usd": "17100",
+          "days_ago": 20
+        },
+        {
+          "source": "watchfinder",
+          "title": "Hulk 126610LV",
+          "price_usd": "17500",
+          "days_ago": 10
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LV",
+          "price_usd": "18000",
+          "days_ago": 75
+        },
+        {
+          "source": "bobswatches",
+          "title": "Submariner LV",
+          "price_usd": "18400",
+          "days_ago": 120
+        }
+      ],
+      "expected": {
+        "count": 6,
+        "median": "17800",
+        "p10": "17100",
+        "p90": "18400",
+        "gates_status": "limited",
+        "failing_gates": [
+          "volume"
+        ]
+      }
+    },
+    {
+      "name": "fail_sources",
+      "brand": "Rolex",
+      "model": "Submariner Date",
+      "dial": "black",
+      "material": "steel",
+      "scope": "full_set",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #0",
+          "price_usd": "13800",
+          "days_ago": 30
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #1",
+          "price_usd": "13900",
+          "days_ago": 31
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #2",
+          "price_usd": "14000",
+          "days_ago": 32
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #3",
+          "price_usd": "14100",
+          "days_ago": 33
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #4",
+          "price_usd": "14200",
+          "days_ago": 34
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #5",
+          "price_usd": "14300",
+          "days_ago": 35
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #6",
+          "price_usd": "14400",
+          "days_ago": 36
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #7",
+          "price_usd": "14500",
+          "days_ago": 37
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #8",
+          "price_usd": "14600",
+          "days_ago": 38
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #9",
+          "price_usd": "14700",
+          "days_ago": 39
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #10",
+          "price_usd": "14800",
+          "days_ago": 40
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN full set #11",
+          "price_usd": "14900",
+          "days_ago": 41
+        }
+      ],
+      "expected": {
+        "count": 12,
+        "median": "14300",
+        "p10": "13900",
+        "p90": "14800",
+        "gates_status": "limited",
+        "failing_gates": [
+          "sources"
+        ]
+      }
+    },
+    {
+      "name": "fail_freshness",
+      "brand": "Rolex",
+      "model": "Submariner Date",
+      "dial": "black",
+      "material": "steel",
+      "scope": "naked",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "126610LN stale",
+          "price_usd": "13800",
+          "days_ago": 200
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN stale2",
+          "price_usd": "13900",
+          "days_ago": 210
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN stale3",
+          "price_usd": "14000",
+          "days_ago": 220
+        },
+        {
+          "source": "bobswatches",
+          "title": "126610LN stale4",
+          "price_usd": "14100",
+          "days_ago": 230
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN stale5",
+          "price_usd": "14200",
+          "days_ago": 240
+        },
+        {
+          "source": "bobswatches",
+          "title": "126610LN stale6",
+          "price_usd": "14300",
+          "days_ago": 250
+        },
+        {
+          "source": "watchfinder",
+          "title": "126610LN stale7",
+          "price_usd": "14400",
+          "days_ago": 260
+        },
+        {
+          "source": "chrono24",
+          "title": "126610LN stale8",
+          "price_usd": "14500",
+          "days_ago": 270
+        },
+        {
+          "source": "bobswatches",
+          "title": "126610LN stale9",
+          "price_usd": "14600",
+          "days_ago": 280
+        },
+        {
+          "source": "watchfinder",
+          "title": "126610LN stale10",
+          "price_usd": "14700",
+          "days_ago": 290
+        }
+      ],
+      "expected": {
+        "count": 10,
+        "median": "14200",
+        "p10": "13900",
+        "p90": "14700",
+        "gates_status": "limited",
+        "failing_gates": [
+          "freshness"
+        ]
+      }
+    },
+    {
+      "name": "fail_dispersion",
+      "brand": "Rolex",
+      "model": "GMT-Master II",
+      "dial": "pepsi",
+      "material": "steel",
+      "scope": "",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "GMT 126710BLRO",
+          "price_usd": "18000",
+          "days_ago": 30
+        },
+        {
+          "source": "bobswatches",
+          "title": "126710BLRO pepsi",
+          "price_usd": "18400",
+          "days_ago": 60
+        },
+        {
+          "source": "auction_a",
+          "title": "BLRO realised",
+          "price_usd": "17100",
+          "days_ago": 20
+        },
+        {
+          "source": "watchfinder",
+          "title": "Pepsi 126710BLRO",
+          "price_usd": "18200",
+          "days_ago": 10
+        },
+        {
+          "source": "chrono24",
+          "title": "126710BLRO",
+          "price_usd": "18600",
+          "days_ago": 75
+        },
+        {
+          "source": "bobswatches",
+          "title": "GMT pepsi steel",
+          "price_usd": "18300",
+          "days_ago": 90
+        },
+        {
+          "source": "watchfinder",
+          "title": "Rolex GMT BLRO",
+          "price_usd": "18700",
+          "days_ago": 40
+        },
+        {
+          "source": "chrono24",
+          "title": "BLRO 126710",
+          "price_usd": "18500",
+          "days_ago": 15
+        },
+        {
+          "source": "auction_b",
+          "title": "GMT BLRO realised",
+          "price_usd": "17300",
+          "days_ago": 55
+        },
+        {
+          "source": "bobswatches",
+          "title": "126710BLRO",
+          "price_usd": "18650",
+          "days_ago": 25
+        },
+        {
+          "source": "chrono24",
+          "title": "Rolex GMT-Master II fantasy",
+          "price_usd": "99000",
+          "days_ago": 12
+        },
+        {
+          "source": "watchfinder",
+          "title": "126710BLRO pepsi",
+          "price_usd": "18550",
+          "days_ago": 33
+        }
+      ],
+      "expected": {
+        "count": 11,
+        "median": "18400",
+        "p10": "17300",
+        "p90": "18650",
+        "gates_status": "pass",
+        "failing_gates": null
+      }
+    },
+    {
+      "name": "thin_no_verdict",
+      "brand": "Rolex",
+      "model": "Milgauss",
+      "dial": "white",
+      "material": "steel",
+      "scope": "",
+      "observations": [
+        {
+          "source": "chrono24",
+          "title": "Milgauss 116400 white",
+          "price_usd": "6800",
+          "days_ago": 30
+        },
+        {
+          "source": "bobswatches",
+          "title": "Milgauss white",
+          "price_usd": "7100",
+          "days_ago": 60
+        },
+        {
+          "source": "watchfinder",
+          "title": "Rolex Milgauss",
+          "price_usd": "6900",
+          "days_ago": 20
+        }
+      ],
+      "expected": null
+    }
+  ]
+}

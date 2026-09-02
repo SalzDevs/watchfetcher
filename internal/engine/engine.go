@@ -1,29 +1,70 @@
-// Package engine computes fair-value verdicts for watches using exact-cell
-// matching: a verdict is derived ONLY from listings identical to the query
-// across brand, model, dial, material and scope. Unknown matches unknown.
-// No fallbacks, no sibling references, no guessing.
+// Package engine: pure, deterministic verdict computation. No I/O, no network,
+// no clock — time enters as an argument (PLAN.md §5 layering rule, G1).
+//
+// Money is decimal.Decimal end to end (G7). Every verdict records the hash of
+// the ruleset and the hash of its evidence set (G4): same evidence + same
+// rules = same verdict, forever.
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"watchledger/internal/money"
 )
 
-// Frozen spec constants.
-const (
-	MinSamples        = 4     // below this: no verdict, ever
-	HighConfidence    = 20    // internal quality tiers — never shown to users
-	MediumConfidence  = 8     //
-	HalfLifeDays      = 900.0 // recency weighting: a sale from 900 days ago counts half
-	TrimLowMult       = 0.2   // dominant-cluster trim band
-	TrimHighMult      = 2.2
-	TrimIterations    = 2
-	MaxReceipts       = 12
-)
+// Ruleset is the versioned statistical configuration. Changing any value is a
+// deliberate act: bump Version, re-bless the golden suite (PLAN.md §13).
+type Ruleset struct {
+	Version          string  `json:"version"`
+	MinSamples       int     `json:"min_samples"`     // below: no computation at all
+	HighConfidence   int     `json:"high_confidence"` // internal tiers, never rendered
+	MediumConfidence int     `json:"medium_confidence"`
+	HalfLifeDays     float64 `json:"half_life_days"` // recency weighting (not money — float ok)
+	TrimLowMult      float64 `json:"trim_low_mult"`  // dominant-cluster band, as multipliers of median
+	TrimHighMult     float64 `json:"trim_high_mult"`
+	TrimIterations   int     `json:"trim_iterations"`
+	MaxReceipts      int     `json:"max_receipts"`
+	Gates            Gates   `json:"gates"`
+}
 
-// Observation is one market data point: a listing seen at a point in time.
+// Gates — the eligibility thresholds (PLAN.md §7.4). A range publishes only
+// if all four hold. Refusing to publish is the feature (§1).
+type Gates struct {
+	MinVolume   int     `json:"min_volume"`    // ≥ exact-tier observations
+	MinSources  int     `json:"min_sources"`   // ≥ independent sources
+	MaxAgeDays  float64 `json:"max_age_days"`  // freshest observation < N days old
+	MaxIQRRatio float64 `json:"max_iqr_ratio"` // p75 / p25 < N
+}
+
+// Current is the active ruleset. One row in rulesets table per distinct hash.
+var Current = Ruleset{
+	Version:          "v1.0.0",
+	MinSamples:       4,
+	HighConfidence:   20,
+	MediumConfidence: 8,
+	HalfLifeDays:     900.0,
+	TrimLowMult:      0.2,
+	TrimHighMult:     2.2,
+	TrimIterations:   2,
+	MaxReceipts:      12,
+	Gates:            Gates{MinVolume: 8, MinSources: 3, MaxAgeDays: 180, MaxIQRRatio: 2.5},
+}
+
+// Hash — canonical content hash of the definition (G4).
+func (r Ruleset) Hash() string {
+	b, _ := json.Marshal(r)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// Observation is one append-only ledger price event, normalised to USD.
 type Observation struct {
 	Brand      string
 	Model      string
@@ -31,201 +72,227 @@ type Observation struct {
 	Material   string
 	Scope      string
 	Ref        string
+	Kind       string // ask | sold | auction_realised | user_reported
+	Source     string
 	Title      string
 	URL        string
-	Source     string
-	PriceUSD   float64
+	PriceUSD   money.Decimal
 	ObservedAt time.Time
 }
 
-// Receipt is one comparable listing shown as evidence for a verdict.
+// Receipt is one comparable shown as evidence for a verdict.
 type Receipt struct {
-	Title  string  `json:"title"`
-	Price  float64 `json:"price"`
-	URL    string  `json:"url"`
-	Date   string  `json:"date"`
-	Source string  `json:"source"`
-	Ref    string  `json:"ref"`
+	Source   string `json:"source"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	Ref      string `json:"ref"`
+	Date     string `json:"date"`      // YYYY-MM
+	PriceUSD string `json:"price_usd"` // decimal string (G7 — money never a JSON number)
 }
 
-// Verdict is the precomputed fair-value answer for one exact cell.
+// Verdict is the computed answer for one exact cell.
 type Verdict struct {
-	CellKey    string    `json:"cell_key"`
-	Brand      string    `json:"brand"`
-	Model      string    `json:"model"`
-	Dial       string    `json:"dial"`
-	Material   string    `json:"material"`
-	Scope      string    `json:"scope"`
-	FairLow    float64   `json:"fair_low"`
-	FairHigh   float64   `json:"fair_high"`
-	Median     float64   `json:"median"`
-	P25        float64   `json:"p25"`
-	P75        float64   `json:"p75"`
-	Count      int       `json:"count"`
-	Confidence string    `json:"confidence"` // INTERNAL — never rendered
-	ComputedAt time.Time `json:"computed_at"`
-	Receipts   []Receipt `json:"receipts"`
+	CellKey      string        `json:"cell_key"`
+	Brand        string        `json:"brand"`
+	Model        string        `json:"model"`
+	Dial         string        `json:"dial"`
+	Material     string        `json:"material"`
+	Scope        string        `json:"scope"`
+	P10          money.Decimal `json:"p10"`
+	Median       money.Decimal `json:"median"`
+	P90          money.Decimal `json:"p90"`
+	Count        int           `json:"count"`
+	Confidence   string        `json:"confidence"` // internal — never rendered
+	ComputedAt   time.Time     `json:"computed_at"`
+	Receipts     []Receipt     `json:"receipts"`
+	GatesStatus  string        `json:"gates_status"`            // "pass" | "limited"
+	FailingGates []string      `json:"failing_gates,omitempty"` // which gates failed
+	RulesetHash  string        `json:"ruleset_hash"`
+	InputsHash   string        `json:"inputs_hash"`
 }
 
-// CellKey builds the exact-match identity for a watch configuration.
+// CellKey — the exact-match identity of a watch configuration.
 // Empty string = unknown, and unknown only matches unknown.
 func CellKey(brand, model, dial, material, scope string) string {
-	return strings.Join([]string{
-		strings.ToLower(strings.TrimSpace(brand)),
-		strings.ToLower(strings.TrimSpace(model)),
-		strings.ToLower(strings.TrimSpace(dial)),
-		strings.ToLower(strings.TrimSpace(material)),
-		strings.ToLower(strings.TrimSpace(scope)),
-	}, "|")
-}
-
-// CellKeyForObservation is the cell an observation belongs to.
-func CellKeyForObservation(o Observation) string {
-	return CellKey(o.Brand, o.Model, o.Dial, o.Material, o.Scope)
-}
-
-// GroupCells buckets observations into exact cells. Observations without a
-// stated brand or model are excluded — they cannot be attributed to any
-// exact cell, and an unverifiable data point is not evidence.
-func GroupCells(observations []Observation) map[string][]Observation {
-	cells := make(map[string][]Observation)
-	for _, o := range observations {
-		if strings.TrimSpace(o.Brand) == "" || strings.TrimSpace(o.Model) == "" {
-			continue
-		}
-		key := CellKeyForObservation(o)
-		cells[key] = append(cells[key], o)
+	parts := []string{brand, model, dial, material, scope}
+	for i, p := range parts {
+		parts[i] = strings.ToLower(strings.TrimSpace(p))
 	}
-	return cells
+	return strings.Join(parts, "|")
 }
 
-// ComputeVerdict computes the fair-value verdict for one cell.
-// Returns nil when the cell has fewer than MinSamples observations.
+// InputsHash — content hash of an evidence set + cell key (G4).
+// Order-independent: the ledger never promises row order.
+func InputsHash(cellKey string, inCell []Observation) string {
+	sigs := make([]string, 0, len(inCell))
+	for _, o := range inCell {
+		sigs = append(sigs, strings.Join([]string{
+			o.Source, o.URL, o.Title, o.Ref, o.Kind,
+			o.PriceUSD.String(),
+			strconv.FormatInt(o.ObservedAt.Unix(), 10),
+		}, "\x1f"))
+	}
+	sort.Strings(sigs)
+	sum := sha256.Sum256([]byte(cellKey + "\x1e" + strings.Join(sigs, "\x1e")))
+	return hex.EncodeToString(sum[:])
+}
+
+// EvaluateGates — PLAN.md §7.4. Pure. Returns failing gate names; empty = pass.
+func EvaluateGates(inCell []Observation, p25, p75 money.Decimal, now time.Time) []string {
+	var failing []string
+	if len(inCell) < Current.Gates.MinVolume {
+		failing = append(failing, "volume")
+	}
+	sources := map[string]bool{}
+	var freshest time.Time
+	for _, o := range inCell {
+		sources[o.Source] = true
+		if o.ObservedAt.After(freshest) {
+			freshest = o.ObservedAt
+		}
+	}
+	if len(sources) < Current.Gates.MinSources {
+		failing = append(failing, "sources")
+	}
+	if freshest.IsZero() || now.Sub(freshest).Hours()/24.0 >= Current.Gates.MaxAgeDays {
+		failing = append(failing, "freshness")
+	}
+	if p25.IsPositive() {
+		ratio := p75.Div(p25)
+		if ratio.GreaterThanOrEqual(money.MustDecimal(strconv.FormatFloat(Current.Gates.MaxIQRRatio, 'f', -1, 64))) {
+			failing = append(failing, "dispersion")
+		}
+	} else {
+		failing = append(failing, "dispersion")
+	}
+	return failing
+}
+
+// ComputeVerdict computes the verdict for one exact cell from the given
+// evidence set. Returns nil below MinSamples (we do not compute, therefore
+// we do not accidentally publish).
 func ComputeVerdict(brand, model, dial, material, scope string, observations []Observation, now time.Time) *Verdict {
-	// Defense in depth: only observations belonging to the exact queried cell
-	// may contribute. Wrong-cell data can never leak into a verdict.
 	key := CellKey(brand, model, dial, material, scope)
 	inCell := make([]Observation, 0, len(observations))
 	for _, o := range observations {
-		if o.PriceUSD <= 0 {
+		if !o.PriceUSD.IsPositive() {
 			continue
 		}
-		if CellKeyForObservation(o) == key {
+		if CellKey(o.Brand, o.Model, o.Dial, o.Material, o.Scope) == key {
 			inCell = append(inCell, o)
 		}
 	}
-	if len(inCell) < MinSamples {
-		return nil
-	}
-	observations = inCell
-
-	if len(observations) < MinSamples {
+	if len(inCell) < Current.MinSamples {
 		return nil
 	}
 
-	// dominant-cluster trim: keep prices within [median*0.2, median*2.2],
-	// re-converging over iterations; small samples pass untouched
-	prices := make([]float64, 0, len(observations))
-	for _, o := range observations {
-		if o.PriceUSD > 0 {
-			prices = append(prices, o.PriceUSD)
-		}
+	prices := make([]money.Decimal, 0, len(inCell))
+	for _, o := range inCell {
+		prices = append(prices, o.PriceUSD)
 	}
 	kept := trimTypicalBand(prices)
-	if len(kept) < MinSamples {
+	if len(kept) < Current.MinSamples {
 		return nil
 	}
 
 	// pair kept prices with their observations for receipts + recency
-	var trimmed []Observation
-	keptSet := make(map[float64]int)
+	keptCount := map[string]int{}
 	for _, p := range kept {
-		keptSet[p]++
+		keptCount[p.String()]++
 	}
-	for _, o := range observations {
-		if o.PriceUSD > 0 && keptSet[o.PriceUSD] > 0 {
-			keptSet[o.PriceUSD]--
+	var trimmed []Observation
+	for _, o := range inCell {
+		if keptCount[o.PriceUSD.String()] > 0 {
+			keptCount[o.PriceUSD.String()]--
 			trimmed = append(trimmed, o)
 		}
 	}
 
-	sorted := make([]float64, len(trimmed))
+	sorted := make([]money.Decimal, len(trimmed))
 	for i, o := range trimmed {
 		sorted[i] = o.PriceUSD
 	}
-	sort.Float64s(sorted)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].LessThan(sorted[j]) })
 	n := len(sorted)
 
 	median := weightedMedian(trimmed, now)
 	p25 := sorted[(n-1)/4]
 	p75 := sorted[3*(n-1)/4]
+	p10 := sorted[max(0, n/10)]
+	p90 := sorted[min(n-1, (9*n)/10)]
 
 	confidence := "low"
-	if n >= HighConfidence {
+	if n >= Current.HighConfidence {
 		confidence = "high"
-	} else if n >= MediumConfidence {
+	} else if n >= Current.MediumConfidence {
 		confidence = "medium"
 	}
 
-	// receipts: the most recent MaxReceipts observations
+	// receipts: most recent, max N
 	recent := make([]Observation, len(trimmed))
 	copy(recent, trimmed)
-	sort.Slice(recent, func(i, j int) bool {
-		return recent[i].ObservedAt.After(recent[j].ObservedAt)
-	})
-	receipts := make([]Receipt, 0, MaxReceipts)
+	sort.Slice(recent, func(i, j int) bool { return recent[i].ObservedAt.After(recent[j].ObservedAt) })
+	receipts := make([]Receipt, 0, Current.MaxReceipts)
 	for i, o := range recent {
-		if i >= MaxReceipts {
+		if i >= Current.MaxReceipts {
 			break
 		}
 		receipts = append(receipts, Receipt{
-			Title:  o.Title,
-			Price:  o.PriceUSD,
-			URL:    o.URL,
-			Date:   o.ObservedAt.Format("2006-01"),
-			Source: o.Source,
-			Ref:    o.Ref,
+			Source:   o.Source,
+			Title:    o.Title,
+			URL:      o.URL,
+			Ref:      o.Ref,
+			Date:     o.ObservedAt.Format("2006-01"),
+			PriceUSD: o.PriceUSD.String(),
 		})
 	}
 
+	failing := EvaluateGates(inCell, p25, p75, now)
+	status := "pass"
+	if len(failing) > 0 {
+		status = "limited"
+	}
+
 	return &Verdict{
-		CellKey:    CellKey(brand, model, dial, material, scope),
-		Brand:      brand,
-		Model:      model,
-		Dial:       dial,
-		Material:   material,
-		Scope:      scope,
-		FairLow:    p25,
-		FairHigh:   p75,
-		Median:     median,
-		P25:        p25,
-		P75:        p75,
-		Count:      n,
-		Confidence: confidence,
-		ComputedAt: now,
-		Receipts:   receipts,
+		CellKey:      key,
+		Brand:        brand,
+		Model:        model,
+		Dial:         dial,
+		Material:     material,
+		Scope:        scope,
+		P10:          p10,
+		Median:       median,
+		P90:          p90,
+		Count:        n,
+		Confidence:   confidence,
+		ComputedAt:   now,
+		Receipts:     receipts,
+		GatesStatus:  status,
+		FailingGates: failing,
+		RulesetHash:  Current.Hash(),
+		InputsHash:   InputsHash(key, inCell),
 	}
 }
 
-func weightedMedian(observations []Observation, now time.Time) float64 {
+// weightedMedian — recency-weighted; weights are floats (not money).
+func weightedMedian(obs []Observation, now time.Time) money.Decimal {
 	type pair struct {
-		price, weight float64
+		price  money.Decimal
+		weight float64
 	}
-	pairs := make([]pair, 0, len(observations))
-	for _, o := range observations {
+	pairs := make([]pair, 0, len(obs))
+	var total float64
+	for _, o := range obs {
 		ageDays := now.Sub(o.ObservedAt).Hours() / 24.0
-		w := math.Pow(0.5, ageDays/HalfLifeDays)
+		w := math.Pow(0.5, ageDays/Current.HalfLifeDays)
 		pairs = append(pairs, pair{o.PriceUSD, w})
+		total += w
 	}
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].price < pairs[j].price })
-	total := 0.0
-	for _, p := range pairs {
-		total += p.weight
-	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].price.LessThan(pairs[j].price) })
 	if total <= 0 {
-		return observations[len(observations)/2].PriceUSD
+		return obs[len(obs)/2].PriceUSD
 	}
-	cum := 0.0
+	var cum float64
 	for _, p := range pairs {
 		cum += p.weight
 		if cum >= total/2 {
@@ -235,24 +302,26 @@ func weightedMedian(observations []Observation, now time.Time) float64 {
 	return pairs[len(pairs)-1].price
 }
 
-func trimTypicalBand(prices []float64) []float64 {
+// trimTypicalBand — dominant-cluster trim (PLAN: never the mean; the band is
+// the honest answer). Prices outside [median*low, median*high] drop, up to N
+// iterations or until stable.
+func trimTypicalBand(prices []money.Decimal) []money.Decimal {
 	if len(prices) < 8 {
 		return prices
 	}
-	sorted := make([]float64, len(prices))
-	copy(sorted, prices)
-	sort.Float64s(sorted)
-	kept := sorted
-	for i := 0; i < TrimIterations; i++ {
+	kept := make([]money.Decimal, len(prices))
+	copy(kept, prices)
+	for i := 0; i < Current.TrimIterations; i++ {
 		median := kept[len(kept)/2]
-		lo, hi := median*TrimLowMult, median*TrimHighMult
-		var next []float64
+		lo := median.Mul(money.MustDecimal(strconv.FormatFloat(Current.TrimLowMult, 'f', -1, 64)))
+		hi := median.Mul(money.MustDecimal(strconv.FormatFloat(Current.TrimHighMult, 'f', -1, 64)))
+		var next []money.Decimal
 		for _, p := range kept {
-			if p >= lo && p <= hi {
+			if p.GreaterThanOrEqual(lo) && p.LessThanOrEqual(hi) {
 				next = append(next, p)
 			}
 		}
-		if len(next) < 8 || sameFloats(next, kept) {
+		if len(next) < 8 || sameDecimals(next, kept) {
 			kept = next
 			break
 		}
@@ -261,12 +330,12 @@ func trimTypicalBand(prices []float64) []float64 {
 	return kept
 }
 
-func sameFloats(a, b []float64) bool {
+func sameDecimals(a, b []money.Decimal) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		if !a[i].Equal(b[i]) {
 			return false
 		}
 	}
