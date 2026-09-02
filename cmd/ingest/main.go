@@ -1,22 +1,37 @@
-// Command ingest: rights-approved sources → raw store → extractor → resolver →
-// observation ledger. The ingest layer never produces a verdict (G1).
+// Command ingest: rights-approved source ingestion (PLAN.md §6).
+// fetch → store raw → extract → resolve → ledger. Never produces a verdict (G1).
 //
-// Phase 0 status: pipeline shape only. A source runs solely if
-// store.SourceEnabled says so — which requires rights evidence in the DB (G6).
+// Usage:
+//
+//	go run ./cmd/ingest --source bonhams \
+//	  --auction https://www.bonhams.com/auction/31330/weekly-watches/ \
+//	  --auction https://www.bonhams.com/auction/30600/weekly-watches/
+//
+// The source must be rights-approved + enabled in the sources table (G6):
+//
+//	UPDATE sources SET enabled=1, access_status='approved',
+//	  rights_basis='public_record: published auction results pages',
+//	  rights_reviewed_at=strftime('%s','now'), reviewer='<name>' WHERE id='bonhams';
 package main
 
 import (
-	"database/sql"
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 
+	"watchledger/internal/ingest"
+	"watchledger/internal/sourcesv2"
 	"watchledger/internal/store"
 )
 
 func main() {
 	dbPath := flag.String("db", "data/watchledger.sqlite", "ledger database path")
-	source := flag.String("source", "", "source id to ingest")
+	source := flag.String("source", "bonhams", "source id (must be approved + enabled in sources)")
+	var auctions auctionURLs
+	flag.Var(&auctions, "auction", "auction results page URL (repeatable)")
 	flag.Parse()
 
 	db, err := store.Open(*dbPath)
@@ -28,40 +43,70 @@ func main() {
 		fatal("migrate:", err)
 	}
 
-	if *source == "" {
-		fmt.Println("ingest: --source required; registered sources:")
-		rows, err := db.Query(`SELECT id, name, access_status, enabled FROM sources ORDER BY id`)
+	if len(auctions) == 0 {
+		fatal("--auction required (repeatable), e.g. https://www.bonhams.com/auction/31330/weekly-watches/")
+	}
+
+	total := ingest.IngestReport{}
+	for _, url := range auctions {
+		auctionID := extractAuctionID(url)
+		if auctionID == "" {
+			fatal(fmt.Sprintf("cannot parse auction id from %q", url))
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		raw, _, err := sourcesv2.FetchRaw(ctx, url)
+		cancel()
 		if err != nil {
-			fatal("list sources:", err)
+			fatal("fetch:", err)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var id, name, status string
-			var enabled bool
-			rows.Scan(&id, &name, &status, &enabled)
-			fmt.Printf("  %-18s %-22s %-10s enabled=%v\n", id, name, status, enabled)
+		report, err := ingest.IngestAuction(db, *source, auctionID, raw, time.Now().UTC())
+		if err != nil {
+			fatal(fmt.Sprintf("ingest %s:", auctionID), err)
 		}
-		os.Exit(0)
+		total.Appended += report.Appended
+		total.Duplicates += report.Duplicates
+		total.Queued += report.Queued
+		total.OutOfScope += report.OutOfScope
+		total.Unsold += report.Unsold
+		total.NoRef += report.NoRef
+		total.Lots += report.Lots
 	}
+	fmt.Printf("\ningest totals: %d lots, %d appended, %d duplicates, %d queued (catalogue gaps), %d out of scope, %d unsold, %d no-ref\n",
+		total.Lots, total.Appended, total.Duplicates, total.Queued, total.OutOfScope, total.Unsold, total.NoRef)
+}
 
-	enabled, err := store.SourceEnabled(db, *source)
-	if err != nil {
-		fatal("source check:", err)
+func extractAuctionID(url string) string {
+	// https://www.bonhams.com/auction/31330/weekly-watches/ → 31330
+	parts := strings.Split(strings.TrimRight(url, "/"), "/")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if isDigits(parts[i]) {
+			return parts[i]
+		}
 	}
-	if !enabled {
-		fmt.Printf("ingest: source %q is disabled — rights evidence required (PLAN.md §13).\n", *source)
-		fmt.Println("ingest: nothing to do. This is the system working as designed.")
-		os.Exit(0)
-	}
+	return ""
+}
 
-	// Rights-approved adapters land in Phase 2 (auction houses) / Phase 3 (eBay).
-	fmt.Printf("ingest: %q is enabled but no adapter is implemented yet (Phase 2).\n", *source)
-	os.Exit(0)
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+type auctionURLs []string
+
+func (a *auctionURLs) String() string { return strings.Join(*a, ", ") }
+func (a *auctionURLs) Set(v string) error {
+	*a = append(*a, v)
+	return nil
 }
 
 func fatal(args ...any) {
 	fmt.Fprintln(os.Stderr, args...)
 	os.Exit(1)
 }
-
-var _ = sql.ErrNoRows

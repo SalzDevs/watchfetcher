@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"time"
 
@@ -9,7 +10,9 @@ import (
 )
 
 func main() {
-	db, err := store.Open("/tmp/watchledger-smoke.sqlite")
+	dbPath := flag.String("db", "data/watchledger.sqlite", "ledger database path")
+	flag.Parse()
+	db, err := store.Open(*dbPath)
 	if err != nil {
 		panic(err)
 	}
@@ -17,6 +20,7 @@ func main() {
 		panic(err)
 	}
 	db.Exec(`DELETE FROM observations`)
+	db.Exec(`DELETE FROM verdict_content`)
 	for _, src := range []string{"auction_a", "auction_b", "chrono24"} {
 		db.Exec(`INSERT OR IGNORE INTO sources (id, name, access_status, rights_basis, rights_reviewed_at, reviewer, enabled)
 			VALUES (?, ?, 'approved', 'smoke', strftime('%s','now'), 'smoke', 1)`, src, src)

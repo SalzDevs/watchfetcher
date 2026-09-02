@@ -1,0 +1,39 @@
+{{define "references.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-size:1.8rem; letter-spacing:-0.02em; }
+    table { width:100%; border-collapse:collapse; margin-top:1.5rem; }
+    td,th { padding:.6rem .5rem; border-bottom:1px solid #d8d3c8; text-align:left; font-size:.9rem; }
+    th { font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; }
+    a { color:#a3762a; text-decoration:none; } a:hover { text-decoration:underline; }
+    .dim { color:#999; }
+    .inscope { color:#2e7d32; font-family:ui-monospace,monospace; font-size:.7rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>References</h1>
+  <p>Phase 2 covers five families (Submariner, Datejust, Speedmaster Professional, Black Bay).
+     Excellent coverage of twenty references beats thin coverage of five hundred —
+     everything else renders "not yet covered" until the evidence base is real.</p>
+  <table>
+    <tr><th>Reference</th><th>Maison</th><th>Family</th><th>Dial</th><th>Material</th><th>Scope</th></tr>
+    {{range .References}}
+    <tr>
+      <td><a href="/references/{{urlquery .Ref}}">{{.Ref}}</a></td>
+      <td>{{.Brand}}</td><td>{{.Family}}</td><td>{{if .Dial}}{{.Dial}}{{else}}<span class="dim">—</span>{{end}}</td>
+      <td>{{if .Material}}{{.Material}}{{else}}<span class="dim">—</span>{{end}}</td>
+      <td>{{if .InScope}}<span class="inscope">PHASE 2</span>{{else}}<span class="dim">later</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</main>
+</body>
+</html>
+{{end}}

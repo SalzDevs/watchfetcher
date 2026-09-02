@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"watchledger/internal/catalogue"
 	"watchledger/internal/engine"
 	"watchledger/internal/landedcost"
 	"watchledger/internal/ledger"
@@ -46,6 +47,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /tools/landed-cost/{corridor}", s.handleCorridor)
 	mux.HandleFunc("GET /api/landedcost", s.handleLandedCostAPI)
 	mux.HandleFunc("POST /api/landedcost", s.handleLandedCostAPI)
+	mux.HandleFunc("GET /references/{ref}", s.handleReference)
+	mux.HandleFunc("GET /references/{$}", s.handleReferencesIndex)
 	mux.HandleFunc("GET /", s.handleHome)
 	mux.HandleFunc("GET /methodology", s.handleMethodology)
 	mux.HandleFunc("GET /api/verdict", s.handleVerdict)
@@ -71,6 +74,147 @@ func (s *Server) handleMethodology(w http.ResponseWriter, r *http.Request) {
 		"TaxRules": rules,
 		"Names":    landedcost.CountryName,
 	})
+}
+
+// familyScope — Phase 2 scope discipline (PLAN.md §10): five families only.
+var familyScope = map[string]bool{
+	"Submariner Date":          true,
+	"Submariner No-Date":       true,
+	"Datejust":                 true,
+	"Speedmaster Professional": true,
+	"Black Bay":                true,
+	"Black Bay 58":             true,
+}
+
+type referenceView struct {
+	Ref, Brand, Family, Dial, Material string
+	InScope                            bool
+	SoldObservations, SoldTotal        int
+}
+
+func (s *Server) handleReferencesIndex(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.Query(`SELECT ref, brand, family, dial, material FROM catalogue_references ORDER BY brand, family, ref`)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	defer rows.Close()
+	var refs []referenceView
+	for rows.Next() {
+		var v referenceView
+		if rows.Scan(&v.Ref, &v.Brand, &v.Family, &v.Dial, &v.Material) == nil {
+			v.InScope = familyScope[v.Family]
+			refs = append(refs, v)
+		}
+	}
+	render(w, "references.html", map[string]any{"Title": "References", "References": refs})
+}
+
+// handleReference — the permanent evidence page (PLAN.md §9 Phase 2).
+// Realised block = auction_realised observations for this ref, exact tier only.
+// Gate-failing refs render counts, never a range (G5/G9).
+func (s *Server) handleReference(w http.ResponseWriter, r *http.Request) {
+	input := r.PathValue("ref")
+	res, err := catalogue.Lookup(s.DB, input)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	if res.NeedsReview || res.Ref == "" {
+		render(w, "reference_uncatalogued.html", map[string]any{"Title": "Reference not covered", "Ref": input})
+		return
+	}
+	if !familyScope[res.Family] {
+		render(w, "reference_uncatalogued.html", map[string]any{
+			"Title": "Not yet covered", "Ref": res.Ref,
+			"Message": fmt.Sprintf("%s %s is outside the Phase 2 scope — five families only while the evidence base is built.", res.Brand, res.Family),
+		})
+		return
+	}
+
+	obs, err := s.refObservations(res)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+
+	page := map[string]any{
+		"Title": fmt.Sprintf("%s %s %s", res.Brand, res.Family, res.Ref),
+		"Ref":   res.Ref, "Brand": res.Brand, "Family": res.Family,
+		"Dial": dialOr(res.Dial), "Material": matOr(res.Material),
+		"Verdict": (*engine.Verdict)(nil), "Count": len(obs),
+	}
+	if len(obs) > 0 {
+		v := engine.ComputeVerdict(res.Brand, res.Family, res.Dial, res.Material, "", obs, time.Now().UTC())
+		if v != nil {
+			page["Verdict"] = v
+			page["Count"] = v.Count
+		}
+		page["Evidence"] = evidenceRows(obs)
+	}
+	// family navigation (the vault, simplified)
+	siblings, _ := catalogue.FamilyRefs(s.DB, res.Brand, res.Family)
+	page["Siblings"] = siblings
+	render(w, "reference.html", page)
+}
+
+type evidenceRow struct {
+	Source, Date, Title string
+	Price               string
+	URL                 string
+}
+
+func (s *Server) refObservations(res catalogue.Resolution) ([]engine.Observation, error) {
+	rows, err := s.DB.Query(`
+		SELECT source_id, title, url, price_usd, observed_at
+		FROM observations
+		WHERE kind = 'auction_realised' AND UPPER(ref) = UPPER(?)
+		ORDER BY observed_at DESC`, res.Ref)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []engine.Observation
+	for rows.Next() {
+		var o engine.Observation
+		var price string
+		var ts int64
+		if err := rows.Scan(&o.Source, &o.Title, &o.URL, &price, &ts); err != nil {
+			return nil, err
+		}
+		d, err := money.FromString(price)
+		if err != nil {
+			continue
+		}
+		o.PriceUSD = d
+		o.ObservedAt = time.Unix(ts, 0)
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func evidenceRows(obs []engine.Observation) []evidenceRow {
+	out := make([]evidenceRow, 0, len(obs))
+	for _, o := range obs {
+		out = append(out, evidenceRow{
+			Source: o.Source, Date: o.ObservedAt.Format("2006-01-02"),
+			Title: o.Title, Price: o.PriceUSD.StringFixed(2), URL: o.URL,
+		})
+	}
+	return out
+}
+
+func dialOr(s string) string {
+	if s == "" {
+		return "unspecified"
+	}
+	return s
+}
+func matOr(s string) string {
+	if s == "" {
+		return "unspecified"
+	}
+	return s
 }
 
 // handleVerdict — latest content-addressed verdict for a cell under the

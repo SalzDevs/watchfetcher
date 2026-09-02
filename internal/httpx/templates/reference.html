@@ -1,0 +1,85 @@
+{{define "reference.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-size:1.8rem; letter-spacing:-0.02em; margin-bottom:.2rem; }
+    .identity { font-family:ui-monospace,monospace; font-size:.8rem; color:#777; margin-bottom:2rem; }
+    .badges { margin: 1rem 0; }
+    .badge { display:inline-block; padding:.25rem .8rem; border-radius:99px; font-family:ui-monospace,monospace; font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; }
+    .pass { background:#e5f0e5; color:#2e7d32; }
+    .limited { background:#fdf3e0; color:#a3762a; }
+    .range { font-size:1.5rem; margin:1rem 0; }
+    .range b { font-size:1.9rem; }
+    table { width:100%; border-collapse:collapse; margin-top:1rem; }
+    td,th { padding:.6rem .5rem; border-bottom:1px solid #d8d3c8; text-align:left; font-size:.88rem; }
+    th { font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; }
+    td.price { text-align:right; font-family:ui-monospace,monospace; }
+    h2 { font-size:1.1rem; margin-top:2.5rem; }
+    .note { background:#efece4; padding:1rem 1.2rem; border-radius:8px; font-size:.9rem; }
+    .warn { background:#fdf3e0; border-left:3px solid #a3762a; padding:.8rem 1rem; font-size:.85rem; }
+    footer { margin-top:3rem; font-size:.75rem; color:#777; font-family:ui-monospace,monospace; }
+    a { color:#a3762a; text-decoration:none; } a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>{{.Brand}} {{.Family}}</h1>
+  <div class="identity">ref {{.Ref}} · {{.Dial}} dial · {{.Material}}</div>
+
+  {{$v := .Verdict}}
+  {{if $v}}
+  <div class="badges">
+    {{if eq $v.GatesStatus "pass"}}<span class="badge pass">all evidence gates pass</span>
+    {{else}}<span class="badge limited">limited market coverage</span>{{end}}
+    <span class="badge" style="background:#e8e4da;color:#555">{{$v.Count}} auction results</span>
+  </div>
+  {{if eq $v.GatesStatus "pass"}}
+  <div class="range">realised <b>{{$v.P10.StringFixed 0}} – {{$v.P90.StringFixed 0}} USD</b> · median {{$v.Median.StringFixed 0}}</div>
+  <p class="note">Realised prices from rights-approved auction records, exact configuration only
+     ({{.Dial}} dial, {{.Material}}). Never asking prices. Never other variants "adjusted in".</p>
+  {{else}}
+  <div class="warn"><b>Limited market coverage.</b> Failing gates:
+    {{range $v.FailingGates}}<code>{{.}}</code> {{end}}
+    — we publish counts only until the evidence meets the methodology threshold. A number here would be a claim, and we don't make claims.</div>
+  {{end}}
+  {{else}}
+  <div class="warn"><b>No auction evidence in the ledger yet</b> for this exact configuration. When results are ingested and gates pass, the realised range appears here. "We don't know yet" is a valid answer.</div>
+  {{end}}
+
+  {{with .Evidence}}
+  <h2>Evidence — every comparable we used</h2>
+  <table>
+    <tr><th>House</th><th>Date</th><th>Lot</th><th>Realised (USD)</th></tr>
+    {{range .}}
+    <tr><td>{{.Source}}</td><td>{{.Date}}</td><td><a href="{{.URL}}" rel="nofollow">{{or .Title "lot"}}</a></td><td class="price">{{.Price}}</td></tr>
+    {{end}}
+  </table>
+  {{end}}
+
+  {{with .Siblings}}
+  <h2>Siblings in the family</h2>
+  <p>{{range .}}<a href="/references/{{urlquery .}}">{{.}}</a> · {{end}}</p>
+  {{end}}
+
+  <footer>Every number re-derives from stored evidence + the <a href="/methodology">published methodology</a>. Dealers can never pay to change a verdict.</footer>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "reference_uncatalogued.html"}}
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>{{.Title}} — WatchLedger</title></head>
+<body style="font:16px/1.6 Georgia,serif;max-width:46rem;margin:0 auto;padding:3rem 1.5rem;background:#f6f4ef;color:#101418">
+<h1>{{.Ref}}</h1>
+<p>{{if .Message}}{{.Message}}{{else}}This reference is not in the curated catalogue yet. We resolve only what we can defend —
+<a href="/methodology">here is the method</a>.{{end}}</p>
+<p><a href="/references">← all references</a></p>
+</body></html>
+{{end}}

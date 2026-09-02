@@ -100,6 +100,20 @@ func CurrencyFor(country string) (string, error) {
 	return "", fmt.Errorf("unsupported country %q", country)
 }
 
+// ConvertToUSD — currency → USD via the EUR base table. Used by ingest to
+// normalise realised prices into the ledger's USD column.
+func ConvertToUSD(fx FX, ccy string, amount money.Decimal) (money.Decimal, error) {
+	rate, err := fx.Rate(ccy)
+	if err != nil {
+		return money.Zero, err
+	}
+	usd, err := fx.Rate("USD")
+	if err != nil {
+		return money.Zero, err
+	}
+	return amount.Div(rate).Mul(usd), nil
+}
+
 // twoDP quantizes for display/storage — once, at line construction (PLAN §8 rule 1).
 func twoDP(d money.Decimal) money.Decimal {
 	return d.Round(2)

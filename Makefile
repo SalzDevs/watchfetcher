@@ -23,8 +23,8 @@ engine:
 reproduce:
 	go run ./cmd/reproduce --db $(DB) --all
 
-seed: ## dev-only: seed a smoke ledger into /tmp
-	go run ./cmd/devseed
+seed: ## dev-only: seed a smoke ledger into $(DB)
+	go run ./cmd/devseed --db $(DB)
 
 tidy:
 	go mod tidy
