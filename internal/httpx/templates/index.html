@@ -58,6 +58,19 @@
      from its stored evidence plus this definition.</p>
   <p>Active ruleset: <b>{{.Version}}</b> · hash <span class="hash">{{.Hash}}</span></p>
   <pre>{{json .Ruleset}}</pre>
+  <h2>Corridor tax rules (landed cost)</h2>
+  <p>Every rule below cites its official source. Rules unverified for 180+ days render a staleness warning on every derived number.</p>
+  <table border="0" cellpadding="4" style="font-size:13px;border-collapse:collapse">
+    <tr style="text-align:left"><th>corridor</th><th>duty</th><th>VAT</th><th>verified</th><th>source</th></tr>
+    {{range .TaxRules}}
+    <tr>
+      <td>{{index $.Names .FromCountry}} → {{index $.Names .ToCountry}}</td>
+      <td>{{.DutyRate.StringFixed 2}}%</td><td>{{.VatRate.StringFixed 2}}%</td>
+      <td>{{.VerifiedAt.Format "2006-01-02"}}</td>
+      <td><a href="{{.SourceURL}}">tariff ↗</a></td>
+    </tr>
+    {{end}}
+  </table>
   <p><a href="/">← home</a></p>
 </main>
 </body>

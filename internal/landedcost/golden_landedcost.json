@@ -1,0 +1,145 @@
+{
+  "fx_date": "2026-09-01",
+  "cases": [
+    {
+      "name": "jp-pt",
+      "lines": [
+        {
+          "label": "Item price (3200000.00 JPY → EUR)",
+          "amount": "20382.17"
+        },
+        {
+          "label": "FX card spread (1.5%)",
+          "amount": "305.73"
+        },
+        {
+          "label": "Shipping + handling",
+          "amount": "180.00"
+        },
+        {
+          "label": "Shipping insurance (0.50%)",
+          "amount": "101.91"
+        },
+        {
+          "label": "Customs value (CIF) — HS 9102.21",
+          "amount": "20969.81"
+        },
+        {
+          "label": "Import duty (4.50%)",
+          "amount": "943.64"
+        },
+        {
+          "label": "Import VAT (23.00% on CIF+duty)",
+          "amount": "5040.09"
+        }
+      ],
+      "total": "26953.54",
+      "warnings": 1
+    },
+    {
+      "name": "ch-de",
+      "lines": [
+        {
+          "label": "Item price (18500.00 CHF → EUR)",
+          "amount": "19680.85"
+        },
+        {
+          "label": "FX card spread (1.5%)",
+          "amount": "295.21"
+        },
+        {
+          "label": "Shipping + handling",
+          "amount": "150.00"
+        },
+        {
+          "label": "Shipping insurance (0.50%)",
+          "amount": "98.40"
+        },
+        {
+          "label": "Customs value (CIF) — HS 9102.21",
+          "amount": "20224.46"
+        },
+        {
+          "label": "Import duty (4.50%)",
+          "amount": "910.10"
+        },
+        {
+          "label": "Import VAT (19.00% on CIF+duty)",
+          "amount": "4015.57"
+        }
+      ],
+      "total": "25150.13",
+      "warnings": 1
+    },
+    {
+      "name": "us-uk-no-vat",
+      "lines": [
+        {
+          "label": "Item price (14000.00 USD → GBP)",
+          "amount": "10917.43"
+        },
+        {
+          "label": "FX card spread (1.5%)",
+          "amount": "163.76"
+        },
+        {
+          "label": "Shipping + handling",
+          "amount": "120.00"
+        },
+        {
+          "label": "Shipping insurance (0.50%)",
+          "amount": "54.59"
+        },
+        {
+          "label": "Customs value (CIF) — HS 9102.21",
+          "amount": "11255.78"
+        },
+        {
+          "label": "Import duty (0.00%)",
+          "amount": "0.00"
+        },
+        {
+          "label": "Import VAT (20.00% on CIF+duty)",
+          "amount": "2251.16"
+        }
+      ],
+      "total": "13506.94",
+      "warnings": 1
+    },
+    {
+      "name": "jp-us-no-vat",
+      "lines": [
+        {
+          "label": "Item price (3200000.00 JPY → USD)",
+          "amount": "22216.56"
+        },
+        {
+          "label": "FX card spread (1.5%)",
+          "amount": "333.25"
+        },
+        {
+          "label": "Shipping + handling",
+          "amount": "200.00"
+        },
+        {
+          "label": "Shipping insurance (0.50%)",
+          "amount": "111.08"
+        },
+        {
+          "label": "Customs value (CIF) — HS 9102.21",
+          "amount": "22860.89"
+        },
+        {
+          "label": "Import duty (5.00%)",
+          "amount": "1143.04"
+        },
+        {
+          "label": "Import VAT",
+          "amount": "0.00"
+        }
+      ],
+      "total": "24003.93",
+      "warnings": 2
+    }
+  ]
+}

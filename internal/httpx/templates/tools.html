@@ -1,0 +1,40 @@
+{{define "tools.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font: 16px/1.6 Georgia, 'Times New Roman', serif; background:#f6f4ef; color:#101418; }
+    main { max-width: 52rem; margin: 0 auto; padding: 3rem 1.5rem; }
+    h1 { font-size: 1.9rem; letter-spacing: -0.02em; }
+    .sub { color:#555; font-style: italic; }
+    table { width:100%; border-collapse: collapse; margin-top: 1.5rem; }
+    td, th { padding: .8rem .6rem; border-bottom: 1px solid #d8d3c8; text-align:left; font-size:.95rem; }
+    th { font-family: ui-monospace, monospace; font-size:.7rem; text-transform:uppercase; letter-spacing:.12em; color:#777; }
+    a { color:#a3762a; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .stale { color:#b3261e; font-size:.75rem; font-family: ui-monospace, monospace; }
+    .disc { margin-top: 2rem; font-size:.8rem; color:#777; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Landed cost</h1>
+  <p class="sub">What a watch actually costs to import — duty, VAT, FX, shipping — every line cited, never a bare number.</p>
+  <table>
+    <tr><th>Corridor</th><th>Duty</th><th>Import VAT</th><th></th></tr>
+    {{range .Corridors}}
+    <tr>
+      <td>{{.FromName}} → {{.ToName}}{{if .Stale}} <span class="stale">stale rule</span>{{end}}</td>
+      <td>{{.DutyRate}}%</td><td>{{.VatRate}}%</td>
+      <td><a href="/tools/landed-cost/{{.Slug}}">breakdown →</a></td>
+    </tr>
+    {{end}}
+  </table>
+  <p class="disc">Estimates only — not customs advice. Every rule cites its official source on the corridor page; rules unverified for 180+ days are flagged. <a href="/methodology">Methodology</a>.</p>
+</main>
+</body>
+</html>
+{{end}}

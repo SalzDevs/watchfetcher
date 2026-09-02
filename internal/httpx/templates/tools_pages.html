@@ -1,0 +1,72 @@
+{{define "corridor.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font: 16px/1.6 Georgia, 'Times New Roman', serif; background:#f6f4ef; color:#101418; }
+    main { max-width: 46rem; margin: 0 auto; padding: 3rem 1.5rem; }
+    h1 { font-size: 1.8rem; letter-spacing:-0.02em; margin-bottom:.25rem; }
+    .arrow { color:#a3762a; }
+    .sub { color:#555; font-style:italic; margin-bottom:2rem; }
+    form { background:#efece4; padding:1.2rem; border-radius:10px; display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:2rem; }
+    label { display:block; font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; margin-bottom:.3rem; }
+    input { padding:.5rem .7rem; border:1px solid #c9c2b2; border-radius:6px; font:inherit; width:10rem; background:#fff; }
+    button { padding:.55rem 1.2rem; background:#101418; color:#f6f4ef; border:0; border-radius:6px; font:inherit; cursor:pointer; }
+    table { width:100%; border-collapse:collapse; }
+    td { padding:.7rem .5rem; border-bottom:1px solid #d8d3c8; vertical-align:top; }
+    td.amount { text-align:right; font-family:ui-monospace,monospace; white-space:nowrap; }
+    td.basis { font-size:.75rem; color:#777; }
+    tr.total td { font-weight:bold; border-top:2px solid #101418; border-bottom:none; }
+    tr.total td.amount { font-size:1.15rem; }
+    .stale { color:#b3261e; font-size:.75rem; font-family:ui-monospace,monospace; }
+    .warn { background:#fdf3e0; border-left:3px solid #a3762a; padding:.8rem 1rem; font-size:.85rem; margin:1rem 0; }
+    .disc { margin-top:2rem; font-size:.8rem; color:#777; }
+    .err { color:#b3261e; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>{{.FromName}} <span class="arrow">→</span> {{.ToName}}</h1>
+  <p class="sub">Landed cost for a pre-owned wrist-watch (HS 9102.21) — duty {{.DutyRate}}%, import VAT {{.VatRate}}%. Rule verified {{.VerifiedAt}}. Source: <a href="{{.SourceURL}}">official tariff</a>.{{if .Stale}} <span class="stale">STALE — over 180 days, re-verification pending.</span>{{end}}</p>
+
+  <form method="get" action="/tools/landed-cost/{{.Slug}}">
+    <div><label>Listing price ({{.SrcCurrency}})</label><input name="price" value="{{.Price}}" inputmode="decimal"></div>
+    <div><label>Shipping (dest. currency)</label><input name="shipping" value="180" inputmode="decimal"></div>
+    <div><button type="submit">Compute</button></div>
+  </form>
+
+  {{if .ComputeError}}<p class="err">{{.ComputeError}}</p>{{end}}
+
+  {{with .Result}}
+  <table>
+    {{range .Lines}}
+    <tr>
+      <td>{{.Label}}{{if .Stale}} <span class="stale">stale rule</span>{{end}}<br><span class="basis">{{.Basis}}</span></td>
+      <td class="amount">{{.Amount.StringFixed 2}} {{$.Result.DestCurrency}}</td>
+    </tr>
+    {{end}}
+    <tr class="total"><td>Estimated landed cost</td><td class="amount">{{.Total.StringFixed 2}} {{.DestCurrency}}</td></tr>
+  </table>
+  {{if .OverAskPct}}{{if not .OverAskPct.IsZero}}
+  <p>Landed cost sits <b>{{.OverAskPct.StringFixed 1}}%</b> over the listing's asking price (converted at the same FX date).</p>
+  {{end}}{{end}}
+  {{range .Warnings}}<div class="warn">⚠ {{.}}</div>{{end}}
+  <p class="disc">FX date pinned to {{.FXDate}} · ruleset {{.RulesetVersion}} — this breakdown re-derives exactly from the cited rules. Not customs advice. <a href="/methodology">Methodology</a> · <a href="/tools/landed-cost">all corridors</a></p>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "corridor_missing.html"}}
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Not covered — WatchLedger</title></head>
+<body style="font:16px/1.6 Georgia,serif;max-width:46rem;margin:0 auto;padding:3rem 1.5rem;background:#f6f4ef;color:#101418">
+<h1>Corridor not covered yet</h1>
+<p>We only publish corridors whose tax rules are verified against an official source.
+   <a href="/tools/landed-cost">See covered corridors →</a></p>
+</body></html>
+{{end}}

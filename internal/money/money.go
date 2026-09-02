@@ -24,4 +24,4 @@ func FromString(s string) (Decimal, error) {
 }
 
 // Zero is the zero value.
-func Zero() Decimal { return decimal.Zero }
+var Zero = decimal.Zero
