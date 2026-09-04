@@ -1,0 +1,35 @@
+{{define "login.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:30rem; margin:0 auto; padding:5rem 1.5rem; }
+    h1 { font-size:1.6rem; }
+    input { padding:.6rem .7rem; border:1px solid #c9c2b2; border-radius:6px; font:inherit; width:100%; background:#fff; box-sizing:border-box; }
+    button { padding:.6rem 1.4rem; background:#101418; color:#f6f4ef; border:0; border-radius:6px; font:inherit; cursor:pointer; margin-top:1rem; }
+    .note { font-size:.85rem; color:#777; margin-top:1.5rem; }
+    .sent { background:#e5f0e5; padding:1rem 1.2rem; border-radius:8px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sign in</h1>
+  {{if .Sent}}
+  <div class="sent">Link sent to <b>{{.Email}}</b> — valid 15 minutes. Nothing to click here.</div>
+  {{else}}
+  {{if .Error}}<p style="color:#b3261e">{{.Error}}</p>{{end}}
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <input type="email" name="email" required placeholder="you@example.com" autofocus>
+    <button type="submit">Email me a sign-in link</button>
+  </form>
+  <p class="note">No password exists. No profile exists. The email address is the account.
+     Your watchlist and reported prices are yours; all evidence stays public.</p>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}

@@ -10,16 +10,19 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"watchledger/internal/auth"
 	"watchledger/internal/catalogue"
 	"watchledger/internal/engine"
 	"watchledger/internal/evaluate"
 	"watchledger/internal/landedcost"
 	"watchledger/internal/ledger"
 	"watchledger/internal/money"
+	"watchledger/internal/store"
 )
 
 //go:embed templates/*.html
@@ -30,6 +33,7 @@ var staticFS embed.FS
 
 var tpl = template.Must(template.New("").Funcs(template.FuncMap{
 	"json": func(v any) string { b, _ := json.MarshalIndent(v, "", "  "); return string(b) },
+	"time": func(ts int64) time.Time { return time.Unix(ts, 0) },
 	"truncate": func(n int, s string) string {
 		if len(s) <= n {
 			return s
@@ -42,10 +46,26 @@ var tpl = template.Must(template.New("").Funcs(template.FuncMap{
 // no live computation on the request path (G1: compute lives in cmd/engine).
 type Server struct {
 	DB      *sql.DB
+	Mailer  auth.Mailer
+	BaseURL string
 	Started time.Time
 }
 
-func New(db *sql.DB) *Server { return &Server{DB: db, Started: time.Now()} }
+func New(db *sql.DB) *Server {
+	return &Server{DB: db, Mailer: &auth.LogMailer{Prefix: "[dev-mail]"}, BaseURL: "http://localhost:8080", Started: time.Now()}
+}
+
+// SetMail — production wiring (SMTP/provider); dev default is LogMailer.
+func (s *Server) SetMail(m auth.Mailer, baseURL string) { s.Mailer = m; s.BaseURL = baseURL }
+
+// currentUser — session cookie → (userID, email, ok).
+func (s *Server) currentUser(r *http.Request) (int64, string, bool) {
+	c, err := r.Cookie("wl_session")
+	if err != nil {
+		return 0, "", false
+	}
+	return auth.User(s.DB, c.Value)
+}
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
@@ -63,6 +83,16 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /evaluate/{id}/brief", s.handleBrief)
 	mux.HandleFunc("GET /references/{ref}", s.handleReference)
 	mux.HandleFunc("GET /references/{$}", s.handleReferencesIndex)
+	mux.HandleFunc("GET /login", s.handleLoginForm)
+	mux.HandleFunc("POST /login", s.handleLoginStart)
+	mux.HandleFunc("GET /login/confirm", s.handleLoginConfirm)
+	mux.HandleFunc("GET /logout", s.handleLogout)
+	mux.HandleFunc("GET /watchlist", s.requireUser(s.handleWatchlist))
+	mux.HandleFunc("POST /watchlist/add", s.requireUser(s.handleWatchAdd))
+	mux.HandleFunc("POST /watchlist/remove", s.requireUser(s.handleWatchRemove))
+	mux.HandleFunc("POST /reports/submit", s.requireUser(s.handleReportSubmit))
+	mux.HandleFunc("GET /admin/reports", s.requireAdmin(s.handleReportsAdmin))
+	mux.HandleFunc("POST /admin/reports/verify", s.requireAdmin(s.handleReportVerify))
 	mux.HandleFunc("GET /", s.handleHome)
 	mux.HandleFunc("GET /methodology", s.handleMethodology)
 	mux.HandleFunc("GET /api/verdict", s.handleVerdict)
@@ -184,6 +214,15 @@ func (s *Server) handleReference(w http.ResponseWriter, r *http.Request) {
 	// family navigation (the vault, simplified)
 	siblings, _ := catalogue.FamilyRefs(s.DB, res.Brand, res.Family)
 	page["Siblings"] = siblings
+
+	// phase 5: personal surfaces (authed) vs public evidence
+	userID, email, authed := s.currentUser(r)
+	page["Authed"] = authed
+	page["Email"] = email
+	if authed {
+		page["Watching"] = store.Watching(s.DB, userID, res.Ref)
+	}
+
 	render(w, "reference.html", page)
 }
 
@@ -396,6 +435,225 @@ func (s *Server) handleBrief(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	render(w, "brief.html", map[string]any{"Title": "Evidence sheet — " + res.Ref, "E": res})
+}
+
+// ---- auth + phase 5 surfaces ----
+
+func (s *Server) requireUser(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, _, ok := s.currentUser(r)
+		if !ok {
+			http.Redirect(w, r, "/login?next="+urlQueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+			return
+		}
+		next(w, r.WithContext(r.Context()))
+		_ = id
+	}
+}
+
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	admin := stringsToLower(osGetenv("ADMIN_EMAIL"))
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, email, ok := s.currentUser(r)
+		if !ok || admin == "" || !stringsEqualFold(email, admin) {
+			http.NotFound(w, r)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func urlQueryEscape(s string) string           { return strings_ReplaceAll(s, "&", "%26") }
+func strings_ReplaceAll(s, o, n string) string { return strings.ReplaceAll(s, o, n) }
+func stringsToLower(s string) string           { return strings.ToLower(s) }
+func stringsEqualFold(a, b string) bool        { return strings.EqualFold(a, b) }
+func osGetenv(k string) string                 { return os.Getenv(k) }
+
+func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
+	render(w, "login.html", map[string]any{
+		"Title": "Sign in", "Next": strings.TrimSpace(r.URL.Query().Get("next")),
+		"Sent": false,
+	})
+}
+
+func (s *Server) handleLoginStart(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.FormValue("email"))
+	if err := auth.StartLogin(s.DB, s.Mailer, email, s.BaseURL); err != nil {
+		render(w, "login.html", map[string]any{"Title": "Sign in", "Error": err.Error(), "Sent": false})
+		return
+	}
+	render(w, "login.html", map[string]any{"Title": "Check your email", "Sent": true, "Email": email})
+}
+
+func (s *Server) handleLoginConfirm(w http.ResponseWriter, r *http.Request) {
+	session, err := auth.ConfirmLogin(s.DB, strings.TrimSpace(r.URL.Query().Get("token")))
+	if err != nil {
+		render(w, "login.html", map[string]any{"Title": "Sign in", "Error": err.Error(), "Sent": false})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: "wl_session", Value: session, Path: "/", HttpOnly: true,
+		SameSite: http.SameSiteLaxMode, MaxAge: int(auth.SessionTTL.Seconds()),
+	})
+	next := strings.TrimSpace(r.URL.Query().Get("next"))
+	if next == "" || !strings.HasPrefix(next, "/") {
+		next = "/watchlist"
+	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if c, err := r.Cookie("wl_session"); err == nil {
+		auth.Logout(s.DB, c.Value)
+	}
+	http.SetCookie(w, &http.Cookie{Name: "wl_session", Value: "", Path: "/", MaxAge: -1})
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleWatchlist — one row per watched reference: evidence state + controls.
+func (s *Server) handleWatchlist(w http.ResponseWriter, r *http.Request) {
+	userID, _, _ := s.currentUser(r)
+	rows, err := store.WatchlistFor(s.DB, userID)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	type watchView struct {
+		Ref          string
+		Realised     int
+		LastObserved string
+		GatesStatus  string
+		HasData      bool
+	}
+	var views []watchView
+	for _, w := range rows {
+		v := watchView{Ref: w.Ref}
+		res, err := catalogue.Lookup(s.DB, w.Ref)
+		if err == nil && !res.NeedsReview {
+			obs, err := s.refObservations(res)
+			if err == nil && len(obs) > 0 {
+				v.HasData = true
+				v.Realised = len(obs)
+				last := obs[0].ObservedAt
+				for _, o := range obs {
+					if o.ObservedAt.After(last) {
+						last = o.ObservedAt
+					}
+				}
+				v.LastObserved = last.Format("2006-01-02")
+				if vd := engine.ComputeVerdict(res.Brand, res.Family, res.Dial, res.Material, "", obs, time.Now().UTC()); vd != nil {
+					v.GatesStatus = vd.GatesStatus
+				}
+			}
+		}
+		views = append(views, v)
+	}
+	render(w, "watchlist.html", map[string]any{"Title": "Your watchlist", "Rows": views})
+}
+
+func (s *Server) handleWatchAdd(w http.ResponseWriter, r *http.Request) {
+	userID, _, _ := s.currentUser(r)
+	ref := strings.TrimSpace(r.FormValue("ref"))
+	back := strings.TrimSpace(r.FormValue("back"))
+	if ref == "" {
+		http.Redirect(w, r, backOr(back), http.StatusSeeOther)
+		return
+	}
+	store.WatchAdd(s.DB, userID, ref)
+	http.Redirect(w, r, backOr(back), http.StatusSeeOther)
+}
+
+func (s *Server) handleWatchRemove(w http.ResponseWriter, r *http.Request) {
+	userID, _, _ := s.currentUser(r)
+	store.WatchRemove(s.DB, userID, strings.TrimSpace(r.FormValue("ref")))
+	http.Redirect(w, r, "/watchlist", http.StatusSeeOther)
+}
+
+func backOr(b string) string {
+	if b != "" && strings.HasPrefix(b, "/") {
+		return b
+	}
+	return "/watchlist"
+}
+
+// handleReportSubmit — user-reported paid price (Tier 3). Review before ledger.
+func (s *Server) handleReportSubmit(w http.ResponseWriter, r *http.Request) {
+	userID, _, _ := s.currentUser(r)
+	ref := strings.TrimSpace(r.FormValue("ref"))
+	price := strings.TrimSpace(r.FormValue("price"))
+	currency := strings.TrimSpace(r.FormValue("currency"))
+	if ref == "" || price == "" {
+		http.Redirect(w, r, "/references", http.StatusSeeOther)
+		return
+	}
+	if currency == "" {
+		currency = "USD"
+	}
+	paidAt := time.Now().UTC()
+	if d, err := time.Parse("2006-01-02", strings.TrimSpace(r.FormValue("paid_at"))); err == nil {
+		paidAt = d
+	}
+	if _, err := store.AddPriceReport(s.DB, userID, ref, price, currency, paidAt); err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	back := strings.TrimSpace(r.FormValue("back"))
+	if back == "" {
+		back = "/watchlist"
+	}
+	http.Redirect(w, r, back+"?reported=1", http.StatusSeeOther)
+}
+
+// handleReportsAdmin — the human gate (PLAN.md §5.4: nothing renders until verified).
+func (s *Server) handleReportsAdmin(w http.ResponseWriter, r *http.Request) {
+	reports, err := store.OpenPriceReports(s.DB)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	render(w, "reports_admin.html", map[string]any{"Title": "Price reports review", "Reports": reports})
+}
+
+// handleReportVerify — verified reports append to the ledger as
+// kind='user_reported' (distinct tier, never merged into auction realised).
+func (s *Server) handleReportVerify(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	action := r.FormValue("action")
+	_, email, _ := s.currentUser(r)
+	if action == "verify" {
+		var ref, price, currency string
+		var paidAt int64
+		if err := s.DB.QueryRow(`SELECT ref, price, currency, paid_at FROM price_reports WHERE id = ?`, id).
+			Scan(&ref, &price, &currency, &paidAt); err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		usd := price
+		if currency != "USD" {
+			if fx, err := landedcost.LoadFX(s.DB, "latest"); err == nil {
+				if d, err := money.FromString(price); err == nil {
+					if c, err := landedcost.ConvertToUSD(fx, currency, d); err == nil {
+						usd = c.StringFixed(2)
+					}
+				}
+			}
+		}
+		if _, err := ledger.AppendObservation(s.DB, ledger.Observation{
+			SourceID: "user_reported", Kind: "user_reported",
+			Ref: ref, Title: "user-reported paid price (reviewed by " + email + ")",
+			URL: "", Price: price, Currency: currency, PriceUSD: usd,
+			ObservedAt: time.Unix(paidAt, 0),
+		}); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	store.SetReportStatus(s.DB, id, action, email)
+	http.Redirect(w, r, "/admin/reports", http.StatusSeeOther)
 }
 
 func dialOr(s string) string {

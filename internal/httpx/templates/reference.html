@@ -80,6 +80,26 @@
   <p>{{range .}}<a href="/references/{{urlquery .}}">{{.}}</a> · {{end}}</p>
   {{end}}
 
+  {{if .Authed}}
+  <div style="background:#efece4;padding:1rem 1.2rem;border-radius:10px;margin-top:2rem">
+    {{if .Watching}}
+    <form method="post" action="/watchlist/remove"><input type="hidden" name="ref" value="{{.Ref}}">✓ watching — <button>unwatch</button></form>
+    {{else}}
+    <form method="post" action="/watchlist/add"><input type="hidden" name="ref" value="{{.Ref}}"><button>☆ watch this reference</button> — one honest email when new evidence lands</form>
+    {{end}}
+    <form method="post" action="/reports/submit" style="margin-top:.8rem">
+      <input type="hidden" name="ref" value="{{.Ref}}"><input type="hidden" name="back" value="/references/{{urlquery .Ref}}">
+      <label style="font-family:ui-monospace,monospace;font-size:.65rem;letter-spacing:.1em;color:#777;text-transform:uppercase">Bought this ref? Tell us what you actually paid — reviewed before it enters the ledger</label><br>
+      <input name="price" placeholder="price" style="width:8rem;padding:.4rem;border:1px solid #c9c2b2;border-radius:6px;font:inherit">
+      <select name="currency" style="padding:.4rem;border:1px solid #c9c2b2;border-radius:6px;font:inherit"><option>USD</option><option>EUR</option><option>GBP</option><option>CHF</option><option>JPY</option></select>
+      <input name="paid_at" placeholder="YYYY-MM-DD" style="width:8rem;padding:.4rem;border:1px solid #c9c2b2;border-radius:6px;font:inherit">
+      <button>submit</button>
+    </form>
+  </div>
+  {{else}}
+  <p style="margin-top:2rem;font-size:.9rem"><a href="/login?next=/references/{{urlquery .Ref}}">Sign in</a> to watch this reference or report what you paid.</p>
+  {{end}}
+
   <footer>Every number re-derives from stored evidence + the <a href="/methodology">published methodology</a>. Dealers can never pay to change a verdict.</footer>
 </main>
 </body>

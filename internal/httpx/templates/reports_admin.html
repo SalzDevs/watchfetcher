@@ -1,0 +1,43 @@
+{{define "reports_admin.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    table { width:100%; border-collapse:collapse; }
+    td,th { padding:.7rem .5rem; border-bottom:1px solid #d8d3c8; font-size:.9rem; }
+    th { font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; color:#777; }
+    form { display:inline; }
+    button { border:1px solid #c9c2b2; border-radius:6px; background:#fff; font:inherit; font-size:.8rem; padding:.2rem .7rem; cursor:pointer; }
+    .none { color:#999; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Price reports — human gate</h1>
+  <p>Verified reports enter the ledger as <code>user_reported</code> — distinct tier, never merged into auction realised.
+     Reject anything you cannot defend; the dataset is worth exactly this gate.</p>
+  {{if not .Reports}}<p class="none">Queue empty.</p>{{else}}
+  <table>
+    <tr><th>Ref</th><th>Paid</th><th>Currency</th><th>Date</th><th>User</th><th></th></tr>
+    {{range .Reports}}
+    <tr>
+      <td><a href="/references/{{urlquery .Ref}}">{{.Ref}}</a></td>
+      <td>{{.Price}}</td><td>{{.Currency}}</td>
+      <td>{{(time .PaidAt).Format "2006-01-02"}}</td>
+      <td>user {{.UserID}}</td>
+      <td>
+        <form method="post" action="/admin/reports/verify"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="verify"><button>verify → ledger</button></form>
+        <form method="post" action="/admin/reports/verify"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="action" value="rejected"><button>reject</button></form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+</main>
+</body>
+</html>
+{{end}}

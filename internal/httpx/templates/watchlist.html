@@ -1,0 +1,50 @@
+{{define "watchlist.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-size:1.8rem; letter-spacing:-0.02em; }
+    table { width:100%; border-collapse:collapse; margin-top:1.5rem; }
+    td,th { padding:.7rem .5rem; border-bottom:1px solid #d8d3c8; text-align:left; font-size:.92rem; }
+    th { font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; }
+    .badge { display:inline-block; padding:.15rem .6rem; border-radius:99px; font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; }
+    .pass { background:#e5f0e5; color:#2e7d32; } .limited { background:#fdf3e0; color:#a3762a; }
+    .none { color:#999; }
+    form { display:inline; }
+    button { background:none; border:1px solid #c9c2b2; border-radius:6px; font:inherit; font-size:.75rem; padding:.2rem .6rem; cursor:pointer; color:#777; }
+    a { color:#a3762a; text-decoration:none; } a:hover { text-decoration:underline; }
+    .top { display:flex; justify-content:space-between; align-items:baseline; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Your watchlist</h1>
+    <a href="/logout">sign out</a>
+  </div>
+  {{if not .Rows}}
+  <p>Nothing watched yet. Watch a reference from any <a href="/references">reference page</a> —
+     when new evidence lands, one honest email tells you. Nothing new = nothing sent.</p>
+  {{else}}
+  <table>
+    <tr><th>Reference</th><th>Evidence</th><th>Gate</th><th>Freshest comp</th><th></th></tr>
+    {{range .Rows}}
+    <tr>
+      <td><a href="/references/{{urlquery .Ref}}">{{.Ref}}</a></td>
+      <td>{{if .HasData}}{{.Realised}} results{{else}}<span class="none">none yet</span>{{end}}</td>
+      <td>{{if .GatesStatus}}{{if eq .GatesStatus "pass"}}<span class="badge pass">pass</span>{{else}}<span class="badge limited">limited</span>{{end}}{{else}}<span class="none">—</span>{{end}}</td>
+      <td>{{if .LastObserved}}{{.LastObserved}}{{else}}<span class="none">—</span>{{end}}</td>
+      <td><form method="post" action="/watchlist/remove"><input type="hidden" name="ref" value="{{.Ref}}"><button>unwatch</button></form></td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+  <p style="margin-top:2rem"><a href="/evaluate">Evaluate a listing →</a></p>
+</main>
+</body>
+</html>
+{{end}}

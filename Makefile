@@ -23,6 +23,9 @@ engine:
 reproduce:
 	go run ./cmd/reproduce --db $(DB) --all
 
+alerts:
+	go run ./cmd/alerts --db $(DB) --base-url ${BASE_URL:-http://localhost:8080}
+
 seed: ## dev-only: seed a smoke ledger into $(DB)
 	go run ./cmd/devseed --db $(DB)
 

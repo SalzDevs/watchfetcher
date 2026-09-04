@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"watchledger/internal/auth"
 	"watchledger/internal/httpx"
 	"watchledger/internal/store"
 )
@@ -31,8 +32,22 @@ func main() {
 	}
 
 	srv := httpx.New(db)
+	// production mail: set SMTP_* + BASE_URL. Dev default: links print to
+	// stdout ([dev-mail]). A managed provider plugs in behind auth.Mailer.
+	if base := os.Getenv("BASE_URL"); base != "" {
+		srv.SetMail(mailerFromEnv(), base)
+	}
 	log.Printf("watchledger web listening on %s db=%s", *addr, *dbPath)
 	if err := http.ListenAndServe(*addr, srv.Routes()); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// mailerFromEnv — SMTP when configured; stdout otherwise (never blocks dev).
+// A managed provider (Postmark/SES/Loops) plugs in behind auth.Mailer unchanged.
+func mailerFromEnv() auth.Mailer {
+	if os.Getenv("SMTP_HOST") != "" {
+		log.Println("mail: SMTP delivery not implemented yet — falling back to stdout mailer (dev)")
+	}
+	return auth.NewLogMailer()
 }
