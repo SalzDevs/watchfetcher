@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -149,4 +150,41 @@ func buildAuctionPage(names []string, auctionID, saleDate string) string {
 <script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"feed":[%s]}}}</script>
 </body></html>`, strings.TrimRight(lots, ","))
 	return page
+}
+
+// Enrichment: titles carry no ref → lot-page meta description supplies it.
+func TestEnrichmentViaLotPage(t *testing.T) {
+	db := setup(t)
+
+	var names []string
+	for i := 0; i < 8; i++ {
+		names = append(names, "Rolex Submariner Date, stainless steel, recent Ref Example")
+	}
+	fixture := buildAuctionPage(names, "40001", "2026-07-01T11:00:00+00:00")
+
+	fetcher := func(ctx context.Context, url string) ([]byte, error) {
+		return []byte(`<!doctype html><html><head><meta name="description" content="Model: Submariner Date Reference: 126610LN">` +
+			`<script id="__NEXT_DATA__" type="application/json">{"props":{}}</script></head></html>`), nil
+	}
+
+	report, err := IngestAuctionWithEnrichment(db, "bonhams", "40001", []byte(fixture), time.Now().UTC(), fetcher, 0)
+	if err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+	if report.Enriched != 8 {
+		t.Fatalf("want 8 enriched, got %+v", report)
+	}
+	if report.Appended != 8 {
+		t.Fatalf("want 8 appended after enrichment, got %+v", report)
+	}
+
+	// without the fetcher the same sale yields nothing — the honest baseline
+	db2 := setup(t)
+	report2, err := IngestAuction(db2, "bonhams", "40001", []byte(fixture), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report2.NoRef != 8 || report2.Appended != 0 {
+		t.Fatalf("no-enrichment baseline wrong: %+v", report2)
+	}
 }

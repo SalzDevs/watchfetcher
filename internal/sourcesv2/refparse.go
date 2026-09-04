@@ -33,13 +33,22 @@ func ExtractRefCandidates(text string) []string {
 			if p.label != "omega" {
 				up = upper(m)
 			}
-			if !seen[up] {
+			if hasDigit(up) && !seen[up] {
 				seen[up] = true
 				out = append(out, up)
 			}
 		}
 	}
 	return out
+}
+
+func hasDigit(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
 }
 
 func upper(s string) string {

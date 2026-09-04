@@ -31,6 +31,8 @@ func main() {
 	dbPath := flag.String("db", "data/watchledger.sqlite", "ledger database path")
 	source := flag.String("source", "bonhams", "source id (must be approved + enabled in sources)")
 	var auctions auctionURLs
+	fetchLots := flag.Bool("fetch-lots", false, "enrich no-ref lots by fetching their lot pages (rate-limited)")
+	lotDelay := flag.Int("lot-delay-ms", 700, "delay between lot-page fetches")
 	flag.Var(&auctions, "auction", "auction results page URL (repeatable)")
 	flag.Parse()
 
@@ -59,7 +61,26 @@ func main() {
 		if err != nil {
 			fatal("fetch:", err)
 		}
-		report, err := ingest.IngestAuction(db, *source, auctionID, raw, time.Now().UTC())
+		var report ingest.IngestReport
+		if *fetchLots {
+			fetcher := func(ctx context.Context, lotURL string) ([]byte, error) {
+				ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+				defer cancel()
+				body, _, err := sourcesv2.FetchRaw(ctx, lotURL)
+				return body, err
+			}
+			var err error
+			report, err = ingest.IngestAuctionWithEnrichment(db, *source, auctionID, raw, time.Now().UTC(), fetcher, time.Duration(*lotDelay)*time.Millisecond)
+			if err != nil {
+				fatal(fmt.Sprintf("ingest %s:", auctionID), err)
+			}
+		} else {
+			var err error
+			report, err = ingest.IngestAuction(db, *source, auctionID, raw, time.Now().UTC())
+			if err != nil {
+				fatal(fmt.Sprintf("ingest %s:", auctionID), err)
+			}
+		}
 		if err != nil {
 			fatal(fmt.Sprintf("ingest %s:", auctionID), err)
 		}
