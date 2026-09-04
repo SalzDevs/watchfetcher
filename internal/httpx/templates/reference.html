@@ -51,6 +51,20 @@
   <div class="warn"><b>No auction evidence in the ledger yet</b> for this exact configuration. When results are ingested and gates pass, the realised range appears here. "We don't know yet" is a valid answer.</div>
   {{end}}
 
+  {{if .SpreadPct}}
+  <div class="spread">
+    <div class="spreadline"><span>Asking prices</span><span>{{.AskMedian}} USD <span style="color:#777">(median of {{.AskCount}} asks, 90d)</span></span></div>
+    <div class="spreadline"><span>Auction realised</span><span>{{$v.Median.StringFixed 0}} USD <span style="color:#777">(median, gate-clean)</span></span></div>
+    <div class="spreadline verdict"><span>Asks sit</span><span>{{.SpreadPct}}% above realised</span></div>
+    <p style="font-size:.75rem;color:#777;font-family:ui-monospace,monospace">Both sides computed from the same ledger. Asks are seller aspirations; realised is what was paid.</p>
+  </div>
+  <style>
+    .spread { border:1px solid #d8d3c8; border-radius:10px; padding:1rem 1.2rem; margin:1.5rem 0; }
+    .spreadline { display:flex; justify-content:space-between; padding:.35rem 0; }
+    .spreadline.verdict { border-top:1px solid #d8d3c8; margin-top:.5rem; padding-top:.7rem; color:#a3762a; font-weight:bold; }
+  </style>
+  {{end}}
+
   {{with .Evidence}}
   <h2>Evidence — every comparable we used</h2>
   <table>

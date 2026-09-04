@@ -39,5 +39,20 @@ func main() {
 			panic(err)
 		}
 	}
-	fmt.Println("seeded /tmp/watchledger-smoke.sqlite")
+	// asks for the spread block (context data — never a verdict input, Phase 0 relabel)
+	askPrices := []string{"15200", "15500", "15800", "16200", "17100", "14900"}
+	for i, p := range askPrices {
+		_, err := ledger.AppendObservation(db, ledger.Observation{
+			SourceID: "ebay", Kind: "ask",
+			Brand: "Rolex", Model: "Submariner Date", Dial: "black", Material: "steel", Ref: "126610LN",
+			Title: "Rolex Submariner Date 126610LN", URL: fmt.Sprintf("https://www.ebay.com/itm/%d", 700+i),
+			Price: p, Currency: "USD", PriceUSD: p,
+			ObservedAt: now.Add(-time.Duration(i*3) * 24 * time.Hour),
+		})
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	fmt.Println("seeded", *dbPath)
 }

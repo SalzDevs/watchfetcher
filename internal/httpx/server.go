@@ -151,6 +151,21 @@ func (s *Server) handleReference(w http.ResponseWriter, r *http.Request) {
 			page["Count"] = v.Count
 		}
 		page["Evidence"] = evidenceRows(obs)
+
+		// Phase 3: asks vs realised spread — published only when the realised
+		// side passes gates (a spread built on thin data is a claim we refuse,
+		// PLAN.md §3/§7.4).
+		if v.GatesStatus == "pass" {
+			if asks, n := s.refAsks(res); n > 0 {
+				askMedian := medianAsks(asks)
+				if askMedian.IsPositive() {
+					spread := askMedian.Sub(v.Median).Div(v.Median).Mul(money.MustDecimal("100")).Round(1)
+					page["AskMedian"] = askMedian.StringFixed(0)
+					page["AskCount"] = n
+					page["SpreadPct"] = spread.StringFixed(1)
+				}
+			}
+		}
 	}
 	// family navigation (the vault, simplified)
 	siblings, _ := catalogue.FamilyRefs(s.DB, res.Brand, res.Family)
@@ -186,6 +201,10 @@ func (s *Server) refObservations(res catalogue.Resolution) ([]engine.Observation
 		if err != nil {
 			continue
 		}
+		// cell identity comes from the catalogue resolution — the observation
+		// row is ref-keyed, the engine needs the full 5-tuple
+		o.Brand, o.Model, o.Dial, o.Material = res.Brand, res.Family, res.Dial, res.Material
+		o.Ref = res.Ref
 		o.PriceUSD = d
 		o.ObservedAt = time.Unix(ts, 0)
 		out = append(out, o)
@@ -202,6 +221,55 @@ func evidenceRows(obs []engine.Observation) []evidenceRow {
 		})
 	}
 	return out
+}
+
+// refAsks — current asks for this ref (kind='ask', last 90 days).
+// asker = weighted median over the ask set; nil = spread block hidden.
+func (s *Server) refAsks(res catalogue.Resolution) ([]engine.Observation, int) {
+	rows, err := s.DB.Query(`
+		SELECT source_id, title, url, price_usd, observed_at
+		FROM observations
+		WHERE kind = 'ask' AND UPPER(ref) = UPPER(?)
+		  AND observed_at >= strftime('%s','now','-90 days')`, res.Ref)
+	if err != nil {
+		return nil, 0
+	}
+	defer rows.Close()
+	var out []engine.Observation
+	for rows.Next() {
+		var o engine.Observation
+		var price string
+		var ts int64
+		if rows.Scan(&o.Source, &o.Title, &o.URL, &price, &ts) != nil {
+			continue
+		}
+		d, err := money.FromString(price)
+		if err != nil || !d.IsPositive() {
+			continue
+		}
+		o.PriceUSD = d
+		o.ObservedAt = time.Unix(ts, 0)
+		out = append(out, o)
+	}
+	return out, len(out)
+}
+
+var asker = medianAsks
+
+func medianAsks(asks []engine.Observation) money.Decimal {
+	if len(asks) == 0 {
+		return money.Zero
+	}
+	ds := make([]money.Decimal, 0, len(asks))
+	for _, o := range asks {
+		ds = append(ds, o.PriceUSD)
+	}
+	for i := 1; i < len(ds); i++ {
+		for j := i; j > 0 && ds[j].LessThan(ds[j-1]); j-- {
+			ds[j], ds[j-1] = ds[j-1], ds[j]
+		}
+	}
+	return ds[len(ds)/2]
 }
 
 func dialOr(s string) string {
