@@ -1,0 +1,103 @@
+{{define "brief.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    /* A4 print sheet — user prints/saves as PDF. No generation service. */
+    @page { size: A4; margin: 14mm; }
+    * { box-sizing:border-box; }
+    body { margin:0; font:11.5pt/1.45 Georgia,serif; color:#101418; background:#fff; }
+    main { max-width:180mm; margin:0 auto; padding:8mm; }
+    header { display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #101418; padding-bottom:4mm; margin-bottom:6mm; }
+    h1 { font-size:16pt; margin:0; }
+    .brand { font-family:ui-monospace,monospace; font-size:8pt; color:#a3762a; letter-spacing:.1em; }
+    .identity { font-family:ui-monospace,monospace; font-size:9pt; color:#555; margin:3mm 0 5mm; }
+    section { margin-bottom:6mm; }
+    h2 { font-size:10pt; text-transform:uppercase; letter-spacing:.12em; font-family:ui-monospace,monospace; color:#555; margin:0 0 2.5mm; }
+    .position { font-size:12pt; background:#f2efe8; padding:3mm 4mm; border-radius:2mm; }
+    table { width:100%; border-collapse:collapse; }
+    td,th { padding:1.6mm 2mm; border-bottom:.3mm solid #c9c2b2; font-size:9.5pt; text-align:left; vertical-align:top; }
+    th { font-family:ui-monospace,monospace; font-size:7pt; text-transform:uppercase; letter-spacing:.1em; color:#777; }
+    td.amount, td.price { text-align:right; font-family:ui-monospace,monospace; white-space:nowrap; }
+    tr.total td { font-weight:bold; border-top:.6mm solid #101418; border-bottom:none; font-size:10.5pt; }
+    .basis { font-size:7.5pt; color:#777; display:block; }
+    .warn { font-size:8.5pt; color:#8a6d1f; margin:2mm 0; }
+    footer { border-top:.3mm solid #c9c2b2; padding-top:3mm; font-size:7.5pt; color:#777; font-family:ui-monospace,monospace; }
+    @media print { a { color:inherit; text-decoration:none; } }
+  </style>
+</head>
+<body>
+<main>
+  {{$E := .E}}
+  <header>
+    <h1>Evidence sheet — {{$E.Ref}}</h1>
+    <span class="brand">WATCHLEDGER</span>
+  </header>
+  <div class="identity">
+    {{if $E.Resolved}}{{$E.Brand}} {{$E.Family}} · {{$E.Dial}} dial · {{$E.Material}}{{else}}reference unresolved{{end}}
+    {{if $E.ListingURL}}· listing: {{truncate 40 $E.ListingURL}}{{end}}
+  </div>
+
+  {{if $E.Resolved}}
+  <section>
+    <h2>Position vs the realised band</h2>
+    <div class="position">{{$E.Position.Sentence}}</div>
+  </section>
+
+  {{if $E.RealisedCount}}
+  <section>
+    <h2>Auction realised — exact configuration only</h2>
+    {{if eq $E.GatesStatus "pass"}}
+    <table>
+      <tr><td>Realised band (p10 – p90)</td><td class="amount">{{$E.P10String}} – {{$E.P90String}} USD</td></tr>
+      <tr><td>Median realised</td><td class="amount">{{$E.MedianString}} USD</td></tr>
+      <tr><td>Comps · houses</td><td class="amount">{{$E.RealisedCount}} · {{range $E.Houses}}{{.}} {{end}}</td></tr>
+      {{if $E.SpreadPct}}<tr><td>Market asks (median)</td><td class="amount">{{$E.AskMedian}} USD — {{$E.SpreadPct}}% above realised</td></tr>{{end}}
+    </table>
+    {{else}}
+    <p class="warn">Limited market coverage — failing gates: {{range $E.FailingGates}}{{.}} {{end}}. Counts only, no range.</p>
+    {{end}}
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if $E.Landed}}
+  <section>
+    <h2>Landed cost — {{$E.Landed.Corridor}} (FX {{$E.Landed.FXDate}})</h2>
+    <table>
+      {{range $E.Landed.Lines}}
+      <tr><td>{{.Label}}<span class="basis">{{.Basis}}</span></td><td class="amount">{{.Amount.StringFixed 2}} {{$E.Landed.DestCurrency}}</td></tr>
+      {{end}}
+      <tr class="total"><td>Estimated landed cost</td><td class="amount">{{$E.Landed.Total.StringFixed 2}} {{$E.Landed.DestCurrency}}</td></tr>
+    </table>
+  </section>
+  {{end}}
+
+  {{if $E.Evidence}}
+  <section>
+    <h2>Comparables used</h2>
+    <table>
+      <tr><th>House</th><th>Date</th><th>Lot</th><th>Realised USD</th></tr>
+      {{range $E.Evidence}}
+      <tr><td>{{.Source}}</td><td>{{.Date}}</td><td>{{.Title}}</td><td class="price">{{.PriceUSD}}</td></tr>
+      {{end}}
+    </table>
+  </section>
+  {{end}}
+
+  <section>
+    <p class="warn">Estimates only — not customs advice, not a valuation. Assumes commercial import at full VAT;
+       private-sale margin schemes may differ. Rules unverified for 180+ days are flagged on the live page.</p>
+  </section>
+
+  <footer>
+    ruleset {{$E.RulesetVersion}} · hash {{$E.RulesetHash}} · FX {{$E.FXDate}} · computed {{$E.ComputedAt.Format "2006-01-02"}}<br>
+    Every number re-derives from stored evidence plus the published methodology (watchledger /methodology).
+    Dealers can never pay to change a public verdict. WatchLedger has no transaction interest in this or any watch.
+  </footer>
+</main>
+</body>
+</html>
+{{end}}

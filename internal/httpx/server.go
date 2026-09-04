@@ -10,11 +10,13 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"watchledger/internal/catalogue"
 	"watchledger/internal/engine"
+	"watchledger/internal/evaluate"
 	"watchledger/internal/landedcost"
 	"watchledger/internal/ledger"
 	"watchledger/internal/money"
@@ -28,6 +30,12 @@ var staticFS embed.FS
 
 var tpl = template.Must(template.New("").Funcs(template.FuncMap{
 	"json": func(v any) string { b, _ := json.MarshalIndent(v, "", "  "); return string(b) },
+	"truncate": func(n int, s string) string {
+		if len(s) <= n {
+			return s
+		}
+		return s[:n] + "…"
+	},
 }).ParseFS(templatesFS, "templates/*.html"))
 
 // Server holds read-model dependencies. Routes serve precomputed data only —
@@ -47,6 +55,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /tools/landed-cost/{corridor}", s.handleCorridor)
 	mux.HandleFunc("GET /api/landedcost", s.handleLandedCostAPI)
 	mux.HandleFunc("POST /api/landedcost", s.handleLandedCostAPI)
+	mux.HandleFunc("GET /evaluate", s.handleEvaluateForm)
+	mux.HandleFunc("GET /evaluate/{$}", s.handleEvaluateForm)
+	mux.HandleFunc("POST /evaluate", s.handleEvaluateSubmit)
+	mux.HandleFunc("POST /evaluate/{$}", s.handleEvaluateSubmit)
+	mux.HandleFunc("GET /evaluate/{id}", s.handleEvaluation)
+	mux.HandleFunc("GET /evaluate/{id}/brief", s.handleBrief)
 	mux.HandleFunc("GET /references/{ref}", s.handleReference)
 	mux.HandleFunc("GET /references/{$}", s.handleReferencesIndex)
 	mux.HandleFunc("GET /", s.handleHome)
@@ -270,6 +284,118 @@ func medianAsks(asks []engine.Observation) money.Decimal {
 		}
 	}
 	return ds[len(ds)/2]
+}
+
+// ---- Phase 4: the evaluator (PLAN.md §9: the core job) ----
+
+// handleEvaluateForm — manual entry is first-class (PLAN.md §9), never a
+// degraded fallback. Refs prefill from the catalogue; unsupported listing
+// URLs route here with the title prefilled, no error shaming.
+func (s *Server) handleEvaluateForm(w http.ResponseWriter, r *http.Request) {
+	refs, _ := catalogue.FamilyRefs(s.DB, "", "") // all refs
+	if refs == nil {
+		rows, err := s.DB.Query(`SELECT ref FROM catalogue_references ORDER BY ref`)
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var ref string
+				if rows.Scan(&ref) == nil {
+					refs = append(refs, ref)
+				}
+			}
+		}
+	}
+	corridors, _ := landedcost.ListCorridors(s.DB)
+	type corridorView struct{ From, To, Slug, FromName, ToName string }
+	var corr []corridorView
+	seen := map[string]bool{}
+	for _, rule := range corridors {
+		slug := landedcost.SlugFor(rule.FromCountry, rule.ToCountry)
+		if seen[rule.ToCountry] {
+			continue
+		}
+		seen[rule.ToCountry] = true
+		corr = append(corr, corridorView{
+			Slug: slug, From: rule.FromCountry, To: rule.ToCountry,
+			FromName: landedcost.CountryName[rule.FromCountry],
+			ToName:   landedcost.CountryName[rule.ToCountry],
+		})
+	}
+	render(w, "evaluate_form.html", map[string]any{
+		"Title": "Evaluate a listing", "Refs": refs, "Corridors": corr,
+		"PrefillRef":   strings.TrimSpace(r.URL.Query().Get("ref")),
+		"PrefillTitle": strings.TrimSpace(r.URL.Query().Get("title")),
+	})
+}
+
+// handleEvaluateSubmit — run the composition, store content-addressed,
+// redirect to the permalink.
+func (s *Server) handleEvaluateSubmit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad_form")
+		return
+	}
+	get := func(k string) string { return strings.TrimSpace(r.FormValue(k)) }
+	in := evaluate.Input{Now: time.Now().UTC(), URL: get("url")}
+	in.RefInput = get("ref")
+	if p, err := money.FromString(get("price")); err == nil {
+		in.Price = p
+	}
+	in.Currency = get("currency")
+	if in.Currency == "" {
+		in.Currency = "USD"
+	}
+	in.ToCountry = get("to_country")
+	in.MarginScheme = get("margin_scheme") == "on"
+
+	// the resolver cascade handles sub-0.85 by asking for confirmation on the
+	// result page — the evaluation still stores (needs_review state)
+	res, err := evaluate.Evaluate(s.DB, in)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	id, err := evaluate.SaveEvaluation(s.DB, res)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/evaluate/%d", id), http.StatusSeeOther)
+}
+
+// handleEvaluation — the permalink. Everything on this page re-derives.
+func (s *Server) handleEvaluation(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	res, err := evaluate.LoadEvaluation(s.DB, id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	if res == nil {
+		http.NotFound(w, r)
+		return
+	}
+	render(w, "evaluation.html", map[string]any{"Title": "Evaluation — " + res.Ref, "E": res, "EvalID": id})
+}
+
+// handleBrief — the negotiation evidence sheet (PLAN.md §11 mechanism 2):
+// print-CSS one-pager, no PDF service — the user prints/saves.
+func (s *Server) handleBrief(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	res, err := evaluate.LoadEvaluation(s.DB, id)
+	if err != nil || res == nil {
+		http.NotFound(w, r)
+		return
+	}
+	render(w, "brief.html", map[string]any{"Title": "Evidence sheet — " + res.Ref, "E": res})
 }
 
 func dialOr(s string) string {

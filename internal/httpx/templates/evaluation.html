@@ -1,0 +1,100 @@
+{{define "evaluation.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-size:1.8rem; letter-spacing:-0.02em; }
+    .identity { font-family:ui-monospace,monospace; font-size:.8rem; color:#777; }
+    .position { font-size:1.15rem; background:#efece4; padding:1rem 1.2rem; border-radius:10px; margin:1.5rem 0; }
+    table { width:100%; border-collapse:collapse; }
+    td,th { padding:.6rem .5rem; border-bottom:1px solid #d8d3c8; text-align:left; font-size:.88rem; }
+    th { font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; }
+    td.price, td.amount { text-align:right; font-family:ui-monospace,monospace; white-space:nowrap; }
+    tr.total td { font-weight:bold; border-top:2px solid #101418; }
+    .badge { display:inline-block; padding:.25rem .8rem; border-radius:99px; font-family:ui-monospace,monospace; font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; }
+    .pass { background:#e5f0e5; color:#2e7d32; } .limited { background:#fdf3e0; color:#a3762a; }
+    .warn { background:#fdf3e0; border-left:3px solid #a3762a; padding:.8rem 1rem; font-size:.85rem; margin:1rem 0; }
+    .spreadline { display:flex; justify-content:space-between; padding:.35rem 0; }
+    .spreadline.v { border-top:1px solid #d8d3c8; margin-top:.5rem; padding-top:.7rem; color:#a3762a; font-weight:bold; }
+    h2 { font-size:1.1rem; margin-top:2.5rem; }
+    .print { float:right; font-family:ui-monospace,monospace; font-size:.75rem; }
+    footer { margin-top:3rem; font-size:.75rem; color:#777; font-family:ui-monospace,monospace; }
+    a { color:#a3762a; text-decoration:none; } a:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<main>
+  {{$E := .E}}
+  <a class="print" href="/evaluate/{{$.EvalID}}/brief">print sheet ↓</a>
+  <h1>Evaluation — {{$E.Ref}}</h1>
+  <div class="identity">{{if $E.Resolved}}{{$E.Brand}} {{$E.Family}} · {{$E.Dial}} dial · {{$E.Material}} · resolved at {{printf "%.0f" $E.Confidence}}% confidence{{else}}reference unresolved — confirm below{{end}}</div>
+
+  {{if $E.NeedsReview}}
+  <div class="warn"><b>We could not resolve this reference with confidence.</b> Check the ref on the listing
+     (usually engraved between the lugs or on the papers) and <a href="/evaluate">evaluate again</a>.
+     We resolve only what we can defend — <a href="/methodology">the method</a>.</div>
+  {{end}}
+
+  {{if $E.Resolved}}
+  <div class="position">{{$E.Position.Sentence}}</div>
+
+  {{$realised := $E.RealisedCount}}
+  {{if $realised}}
+  <div class="badges">
+    {{if eq $E.GatesStatus "pass"}}<span class="badge pass">all evidence gates pass</span>
+    {{else}}<span class="badge limited">limited market coverage</span>{{end}}
+    <span class="badge" style="background:#e8e4da;color:#555">{{$E.RealisedCount}} auction results · {{$E.Houses}}</span>
+  </div>
+  {{if eq $E.GatesStatus "pass"}}
+  <table>
+    <tr><td>Realised band (p10 – p90)</td><td class="amount">{{$E.P10String}} – {{$E.P90String}} USD</td></tr>
+    <tr><td>Median realised</td><td class="amount">{{$E.MedianString}} USD</td></tr>
+  </table>
+  {{if $E.SpreadPct}}
+  <div style="border:1px solid #d8d3c8;border-radius:10px;padding:1rem 1.2rem;margin:1.5rem 0">
+    <div class="spreadline"><span>Market asks (median, {{if $E.AskCount}}{{$E.AskCount}}{{end}} listings, 90d)</span><span class="amount">{{$E.AskMedian}} USD</span></div>
+    <div class="spreadline"><span>Auction realised (median, gate-clean)</span><span class="amount">{{$E.MedianString}} USD</span></div>
+    <div class="spreadline v"><span>Asks sit</span><span>{{$E.SpreadPct}}% above realised</span></div>
+  </div>
+  {{end}}
+  {{else}}
+  <div class="warn"><b>Limited market coverage.</b> Failing gates: {{range $E.FailingGates}}<code>{{.}}</code> {{end}}
+  — counts only, no range. A number here would be a claim.</div>
+  {{end}}
+  {{end}}
+  {{end}}
+
+  {{if $E.Landed}}
+  <h2>Landed cost — {{$E.Landed.Corridor}} (FX pinned {{$E.Landed.FXDate}})</h2>
+  <table>
+    {{range $E.Landed.Lines}}
+    <tr><td>{{.Label}}{{if .Stale}} <span class="badge limited">stale rule</span>{{end}}<br><span style="font-size:.75rem;color:#777">{{.Basis}}</span></td>
+    <td class="amount">{{.Amount.StringFixed 2}} {{$E.Landed.DestCurrency}}</td></tr>
+    {{end}}
+    <tr class="total"><td>Estimated landed cost</td><td class="amount">{{$E.Landed.Total.StringFixed 2}} {{$E.Landed.DestCurrency}}</td></tr>
+  </table>
+  {{range $E.Landed.Warnings}}<div class="warn">⚠ {{.}}</div>{{end}}
+  {{else if $E.LandedErr}}
+  <h2>Landed cost</h2>
+  <div class="warn">{{$E.LandedErr}} — pick a corridor with verified rules.</div>
+  {{end}}
+
+  {{if $E.Evidence}}
+  <h2>Evidence — the realised set (exact configuration only)</h2>
+  <table>
+    <tr><th>House</th><th>Date</th><th>Lot</th><th>Realised (USD)</th></tr>
+    {{range $E.Evidence}}
+    <tr><td>{{.Source}}</td><td>{{.Date}}</td><td><a href="{{.URL}}" rel="nofollow">{{.Title}}</a></td><td class="price">{{.PriceUSD}}</td></tr>
+    {{end}}
+  </table>
+  {{end}}
+
+  <footer>ruleset {{$E.RulesetVersion}} · hash {{$E.RulesetHash}} · this page re-derives from stored evidence — <a href="/methodology">how</a> · <a href="/">WatchLedger</a></footer>
+</main>
+</body>
+</html>
+{{end}}

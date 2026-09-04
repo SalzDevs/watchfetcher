@@ -1,0 +1,60 @@
+{{define "evaluate_form.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:16px/1.6 Georgia,serif; background:#f6f4ef; color:#101418; }
+    main { max-width:46rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-size:1.8rem; letter-spacing:-0.02em; }
+    .sub { color:#555; font-style:italic; }
+    form { background:#efece4; padding:1.5rem; border-radius:12px; margin-top:1.5rem; }
+    .row { margin-bottom:1rem; }
+    label { display:block; font-family:ui-monospace,monospace; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; color:#777; margin-bottom:.3rem; }
+    input, select { padding:.55rem .7rem; border:1px solid #c9c2b2; border-radius:6px; font:inherit; width:100%; background:#fff; box-sizing:border-box; }
+    .half { display:inline-block; width:calc(50% - .5rem); }
+    button { padding:.6rem 1.4rem; background:#101418; color:#f6f4ef; border:0; border-radius:6px; font:inherit; cursor:pointer; }
+    .note { font-size:.8rem; color:#777; margin-top:1.5rem; }
+    a { color:#a3762a; }
+    .chk { display:flex; gap:.5rem; align-items:center; } .chk input { width:auto; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Evaluate a listing</h1>
+  <p class="sub">The realised evidence, the landed cost, where the ask sits — every line cited.</p>
+  <form method="post" action="/evaluate">
+    <div class="row">
+      <label>Reference (type a ref, e.g. 126610LN, or an alias like batman)</label>
+      <input name="ref" list="refs" required value="{{.PrefillRef}}" placeholder="126610LN">
+      <datalist id="refs">{{range .Refs}}<option value="{{.}}">{{end}}</datalist>
+    </div>
+    <div class="row half">
+      <label>Asking price</label><input name="price" required inputmode="decimal" placeholder="14000">
+    </div>
+    <div class="row half">
+      <label>Currency</label>
+      <select name="currency">
+        <option>USD</option><option>EUR</option><option>GBP</option><option>CHF</option><option>JPY</option><option>HKD</option>
+      </select>
+    </div>
+    <div class="row">
+      <label>Landed cost — importing to</label>
+      <select name="to_country">
+        {{range .Corridors}}<option value="{{.To}}">to {{.ToName}}</option>{{end}}
+      </select>
+    </div>
+    <div class="row chk">
+      <input type="checkbox" name="margin_scheme" id="ms">
+      <label for="ms" style="text-transform:none;letter-spacing:0;font-size:.85rem;font-family:Georgia,serif;color:#101418">Private / margin scheme sale (VAT may already be settled)</label>
+    </div>
+    <input type="hidden" name="url" value="">
+    <button type="submit">Evaluate →</button>
+  </form>
+  <p class="note">The evaluation permalink is permanent and re-derives from stored evidence.
+     <a href="/methodology">How the numbers are made.</a> Evaluations are never added to the public ledger — a viewed listing is not an observation.</p>
+</main>
+</body>
+</html>
+{{end}}
