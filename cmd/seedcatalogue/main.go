@@ -1,7 +1,9 @@
 // Command seedcatalogue: bulk-seed the catalogue from a JSON export.
 // Shape: {"refs":[[ref,brand,family,dial,material,version,updated_at],...],
-//         "aliases":[[alias,ref,kind,added_by,created_at],...],
-//         "queue":[[source_id,raw_doc_id,candidate,resolver_output],...]}
+//
+//	"aliases":[[alias,ref,kind,added_by,created_at],...],
+//	"queue":[[source_id,raw_doc_id,candidate,resolver_output],...]}
+//
 // Idempotent (INSERT OR IGNORE except queue rows, which keep their own identity).
 package main
 

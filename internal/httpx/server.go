@@ -3,8 +3,10 @@
 package httpx
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -99,6 +101,8 @@ func (s *Server) Routes() http.Handler {
 	})
 	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
+	mux.HandleFunc("GET /ebay/notifications", s.handleEbayChallenge)
+	mux.HandleFunc("POST /ebay/notifications", s.handleEbayDeletion)
 	mux.HandleFunc("GET /", s.handleHome)
 	mux.HandleFunc("GET /methodology", s.handleMethodology)
 	mux.HandleFunc("GET /api/verdict", s.handleVerdict)
@@ -704,6 +708,51 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprintf(w, "User-agent: *\nAllow: /\n\nSitemap: %s/sitemap.xml\n", base)
+}
+
+// ---- eBay compliance endpoints (production key set requirement) ----
+
+// handleEbayChallenge — eBay verifies the endpoint before sending
+// notifications: GET with ?verification_challenge=<random> must echo the
+// challenge verbatim, 200, text/plain.
+func (s *Server) handleEbayChallenge(w http.ResponseWriter, r *http.Request) {
+	challenge := r.URL.Query().Get("verification_challenge")
+	if challenge == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, challenge)
+}
+
+// handleEbayDeletion — signed account-deletion notifications (GDPR/CCPA).
+// Archive payload as a raw document (G3 provenance, compliance record) and
+// acknowledge. JWS signature verification with eBay's public cert = hardening
+// TODO; payload carries no personal data we hold meanwhile.
+func (s *Server) handleEbayDeletion(w http.ResponseWriter, r *http.Request) {
+	body, err := ioReadAll(r)
+	if err != nil || len(body) == 0 || len(body) > 10<<20 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	sum := sha256.Sum256(body)
+	hash := hex.EncodeToString(sum[:])
+	s.DB.Exec(`INSERT OR IGNORE INTO raw_documents (source_id, url, fetched_at, content_hash, content_type, body)
+		VALUES ('ebay', 'marketplace-account-deletion', strftime('%s','now'), ?, 'application/json', ?)`, hash, string(body))
+	w.WriteHeader(http.StatusOK)
+}
+
+func ioReadAll(r *http.Request) ([]byte, error) {
+	buf := make([]byte, 0, 8192)
+	tmp := make([]byte, 4096)
+	for {
+		n, err := r.Body.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if err != nil {
+			return buf, nil
+		}
+	}
 }
 
 func dialOr(s string) string {
