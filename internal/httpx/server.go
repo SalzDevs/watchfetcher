@@ -93,6 +93,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /reports/submit", s.requireUser(s.handleReportSubmit))
 	mux.HandleFunc("GET /admin/reports", s.requireAdmin(s.handleReportsAdmin))
 	mux.HandleFunc("POST /admin/reports/verify", s.requireAdmin(s.handleReportVerify))
+	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
+	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /", s.handleHome)
 	mux.HandleFunc("GET /methodology", s.handleMethodology)
 	mux.HandleFunc("GET /api/verdict", s.handleVerdict)
@@ -654,6 +656,50 @@ func (s *Server) handleReportVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	store.SetReportStatus(s.DB, id, action, email)
 	http.Redirect(w, r, "/admin/reports", http.StatusSeeOther)
+}
+
+// handleSitemap — corridor + reference URLs (PLAN.md §11: the pages ARE the
+// marketing; indexable body deep-not-broad). Only in-scope families + corridors.
+func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
+	base := s.BaseURL
+	if base == "" || strings.Contains(base, "localhost") {
+		base = "https://" + r.Host
+	}
+	var urls []string
+	for _, p := range []string{"/", "/methodology", "/tools/landed-cost", "/evaluate", "/references"} {
+		urls = append(urls, base+p)
+	}
+	if rules, err := landedcost.ListCorridors(s.DB); err == nil {
+		for _, rule := range rules {
+			urls = append(urls, base+"/tools/landed-cost/"+landedcost.SlugFor(rule.FromCountry, rule.ToCountry))
+		}
+	}
+	rows, err := s.DB.Query(`SELECT ref FROM catalogue_references WHERE family IN
+		('Submariner Date','Submariner No-Date','Datejust','Speedmaster Professional','Black Bay','Black Bay 58')`)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var ref string
+			if rows.Scan(&ref) == nil {
+				urls = append(urls, base+"/references/"+ref)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/xml")
+	fmt.Fprintf(w, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n")
+	for _, u := range urls {
+		fmt.Fprintf(w, "  <url><loc>%s</loc></url>\n", u)
+	}
+	fmt.Fprintf(w, "</urlset>\n")
+}
+
+func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
+	base := s.BaseURL
+	if base == "" || strings.Contains(base, "localhost") {
+		base = "https://" + r.Host
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\n\nSitemap: %s/sitemap.xml\n", base)
 }
 
 func dialOr(s string) string {
