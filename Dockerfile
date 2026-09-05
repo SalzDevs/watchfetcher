@@ -14,8 +14,10 @@ FROM alpine:3.20
 RUN apk add --no-cache ca-certificates bash
 WORKDIR /app
 COPY --from=builder /watchledger-web /watchledger-engine /watchledger-ingest /watchledger-reproduce /watchledger-alerts /usr/local/bin/
+COPY scripts/prod-start.sh /app/scripts/prod-start.sh
+RUN chmod +x /app/scripts/prod-start.sh
 RUN mkdir -p /data
 ENV DB_PATH=/data/watchledger.sqlite
 ENV PORT=8080
 EXPOSE 8080
-CMD ["bash", "-c", "/usr/local/bin/watchledger-web --db $DB_PATH --addr :$PORT"]
+CMD ["bash", "/app/scripts/prod-start.sh"]
