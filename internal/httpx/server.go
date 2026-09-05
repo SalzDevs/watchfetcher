@@ -93,6 +93,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /reports/submit", s.requireUser(s.handleReportSubmit))
 	mux.HandleFunc("GET /admin/reports", s.requireAdmin(s.handleReportsAdmin))
 	mux.HandleFunc("POST /admin/reports/verify", s.requireAdmin(s.handleReportVerify))
+	mux.HandleFunc("GET /google317ab87a292b5275.html", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		fmt.Fprint(w, "google-site-verification: google317ab87a292b5275.html")
+	})
 	mux.HandleFunc("GET /sitemap.xml", s.handleSitemap)
 	mux.HandleFunc("GET /robots.txt", s.handleRobots)
 	mux.HandleFunc("GET /", s.handleHome)
