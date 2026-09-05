@@ -1,7 +1,4 @@
-// Resend mailer — free tier (3,000 emails/month, 100/day), HTTP API (no SMTP
-// handshake), best-in-class deliverability. Domain verification required
-// (SPF/DKIM DNS records) for custom from-domain; onboarding sender works
-// for testing. https://resend.com — RESEND_API_KEY in env.
+// Resend mailer — free tier (3,000 emails/month, 100/day), HTTP API, HTML + text.
 package auth
 
 import (
@@ -9,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 )
 
 const resendAPI = "https://api.resend.com/emails"
@@ -17,12 +13,12 @@ const resendAPI = "https://api.resend.com/emails"
 // ResendMailer — HTTP API mailer, free tier generous, one API key.
 type ResendMailer struct {
 	APIKey string
-	From   string // "WatchLedger <hello@yourdomain>" — verified domain required
+	From   string
 }
 
 var _ Mailer = (*ResendMailer)(nil)
 
-func (m *ResendMailer) send(to, subject, body string) error {
+func (m *ResendMailer) send(to, subject, text, html string) error {
 	if m.APIKey == "" {
 		return fmt.Errorf("resend: RESEND_API_KEY not set")
 	}
@@ -34,7 +30,8 @@ func (m *ResendMailer) send(to, subject, body string) error {
 		"from":    from,
 		"to":      []string{to},
 		"subject": subject,
-		"text":    body,
+		"text":    text,
+		"html":    html,
 	})
 	if err != nil {
 		return err
@@ -57,13 +54,11 @@ func (m *ResendMailer) send(to, subject, body string) error {
 }
 
 func (m *ResendMailer) SendLoginLink(email, link string) error {
-	escaped := url.PathEscape(link)
-	return m.send(email, "Your WatchLedger sign-in link",
-		fmt.Sprintf("Sign in to WatchLedger:\n\n%s\n\nThis link works once and expires in 15 minutes.\n"+
-			"If you didn't request it, ignore this email — no account is created without it.\n\n"+
-			"WatchLedger — every number re-derives from evidence.\n", escaped))
+	subject, text, html := loginEmailParts(link)
+	return m.send(email, subject, text, html)
 }
 
 func (m *ResendMailer) SendAlert(email, subject, body string) error {
-	return m.send(email, subject, body)
+	s, text, html := alertEmailParts(subject, body)
+	return m.send(email, s, text, html)
 }
