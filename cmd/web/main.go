@@ -43,11 +43,28 @@ func main() {
 	}
 }
 
-// mailerFromEnv — SMTP when configured; stdout otherwise (never blocks dev).
-// A managed provider (Postmark/SES/Loops) plugs in behind auth.Mailer unchanged.
+// mailerFromEnv — real SMTP when configured (SMTP_HOST/PORT/USER/PASS/MAIL_FROM);
+// stdout otherwise (dev). Set BASE_URL too: the magic link must point at a
+// reachable host or the email is useless.
 func mailerFromEnv() auth.Mailer {
 	if os.Getenv("SMTP_HOST") != "" {
-		log.Println("mail: SMTP delivery not implemented yet — falling back to stdout mailer (dev)")
+		port := envOr("SMTP_PORT", "587")
+		log.Printf("mail: SMTP via %s:%s", os.Getenv("SMTP_HOST"), port)
+		return &auth.SMTPMailer{
+			Host:     os.Getenv("SMTP_HOST"),
+			Port:     port,
+			User:     os.Getenv("SMTP_USER"),
+			Password: os.Getenv("SMTP_PASS"),
+			From:     envOr("MAIL_FROM", "WatchLedger <hello@watchfairvalue.com>"),
+		}
 	}
+	log.Println("mail: no SMTP_HOST — login links print to stdout (dev mode)")
 	return auth.NewLogMailer()
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
 }

@@ -41,6 +41,21 @@ func envOr(k, def string) string {
 }
 
 func pickMailer() auth.Mailer {
+	if os.Getenv("SMTP_HOST") != "" {
+		port := os.Getenv("SMTP_PORT")
+		if port == "" {
+			port = "587"
+		}
+		from := os.Getenv("MAIL_FROM")
+		if from == "" {
+			from = "WatchLedger <hello@watchfairvalue.com>"
+		}
+		return &auth.SMTPMailer{
+			Host: os.Getenv("SMTP_HOST"), Port: port,
+			User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASS"),
+			From: from,
+		}
+	}
 	return &auth.LogMailer{Prefix: "[alerts]"}
 }
 
