@@ -47,6 +47,15 @@ func main() {
 // stdout otherwise (dev). Set BASE_URL too: the magic link must point at a
 // reachable host or the email is useless.
 func mailerFromEnv() auth.Mailer {
+	// Resend first — free 3k/mo, HTTP API, best deliverability.
+	if k := os.Getenv("RESEND_API_KEY"); k != "" {
+		from := os.Getenv("MAIL_FROM")
+		if from == "" {
+			from = "WatchLedger <onboarding@resend.dev>"
+		}
+		log.Printf("mail: Resend (from %s)", from)
+		return &auth.ResendMailer{APIKey: k, From: from}
+	}
 	if os.Getenv("SMTP_HOST") != "" {
 		port := envOr("SMTP_PORT", "587")
 		log.Printf("mail: SMTP via %s:%s", os.Getenv("SMTP_HOST"), port)
@@ -58,7 +67,7 @@ func mailerFromEnv() auth.Mailer {
 			From:     envOr("MAIL_FROM", "WatchLedger <hello@watchfairvalue.com>"),
 		}
 	}
-	log.Println("mail: no SMTP_HOST — login links print to stdout (dev mode)")
+	log.Println("mail: no RESEND_API_KEY/SMTP_HOST — login links print to stdout (dev mode)")
 	return auth.NewLogMailer()
 }
 
