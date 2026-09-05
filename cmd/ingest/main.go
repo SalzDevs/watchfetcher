@@ -22,7 +22,10 @@ import (
 	"strings"
 	"time"
 
+	"encoding/json"
+
 	"watchledger/internal/ingest"
+	"watchledger/internal/landedcost"
 	"watchledger/internal/sourcesv2"
 	"watchledger/internal/store"
 )
@@ -33,8 +36,16 @@ func main() {
 	var auctions auctionURLs
 	fetchLots := flag.Bool("fetch-lots", false, "enrich no-ref lots by fetching their lot pages (rate-limited)")
 	lotDelay := flag.Int("lot-delay-ms", 700, "delay between lot-page fetches")
+	limit := flag.Int("ebay-limit", 200, "eBay results per family query")
+	ebayID := flag.String("ebay-client-id", "", "eBay app id (or env EBAY_CLIENT_ID)")
+	ebaySecret := flag.String("ebay-client-secret", "", "eBay cert id (or env EBAY_CLIENT_SECRET)")
 	flag.Var(&auctions, "auction", "auction results page URL (repeatable)")
 	flag.Parse()
+
+	if *source == "ebay" {
+		runEBay(*dbPath, *limit, *ebayID, *ebaySecret)
+		return
+	}
 
 	db, err := store.Open(*dbPath)
 	if err != nil {
@@ -130,4 +141,54 @@ func (a *auctionURLs) Set(v string) error {
 func fatal(args ...any) {
 	fmt.Fprintln(os.Stderr, args...)
 	os.Exit(1)
+}
+
+// runEBay — Phase 3 asks ingestion via the official Browse API.
+// Credentials: --ebay-client-id/--ebay-client-secret or env
+// EBAY_CLIENT_ID / EBAY_CLIENT_SECRET (client-credentials OAuth).
+func runEBay(dbPath string, limit int, ebayID, ebaySecret string) {
+	db, err := store.Open(dbPath)
+	if err != nil {
+		fatal("open db:", err)
+	}
+	defer db.Close()
+	if err := store.Migrate(db); err != nil {
+		fatal("migrate:", err)
+	}
+
+	clientID := firstNonEmpty(ebayID, os.Getenv("EBAY_CLIENT_ID"))
+	clientSecret := firstNonEmpty(ebaySecret, os.Getenv("EBAY_CLIENT_SECRET"))
+	client := sourcesv2.NewEBayClientFromEnv(clientID, clientSecret)
+
+	fx, err := landedcost.LoadFX(db, "latest")
+	if err != nil {
+		fatal("fx:", err)
+	}
+
+	searcher := func(ctx context.Context, q string) ([]sourcesv2.EBayItem, json.RawMessage, error) {
+		items, raw, err := client.Search(ctx, q, limit)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(items) == 0 && len(raw) == 0 {
+			return nil, nil, sourcesv2.ErrNoItems
+		}
+		return items, raw, nil
+	}
+
+	report, err := ingest.IngestEBayAsks(db, searcher, fx, time.Now().UTC())
+	if err != nil {
+		fatal("ebay ingest:", err)
+	}
+	fmt.Printf("\nebay ingest: %d asks appended, %d duplicates, %d out of scope, %d no-ref, %d delists detected\n",
+		report.Appended, report.Duplicates, report.OutOfScope, report.NoRef, report.Enriched)
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
