@@ -35,9 +35,9 @@ func TestEbayNotificationEndpoint(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications",
-		strings.NewReader(`{"metadata":{"topic":"MARKETPLACE_ACCOUNT_DELETION"},"notification":{"data":{"userId":"x1"},"verificationToken":"qK4sBjqSWp1WguF1uBe5FZkx622tUyH9zR2"}}`)))
+		strings.NewReader(`{"metadata":{"topic":"MARKETPLACE_ACCOUNT_DELETION"},"notification":{"data":{"userId":"x1"}}}`)))
 	if w.Code != 200 {
-		t.Fatalf("deletion POST: %d", w.Code)
+		t.Fatalf("deletion POST (no token in payload — spec): %d", w.Code)
 	}
 	var n int
 	srv.DB.QueryRow(`SELECT COUNT(*) FROM raw_documents WHERE url='marketplace-account-deletion'`).Scan(&n)
@@ -52,18 +52,14 @@ func TestEbayNotificationEndpoint(t *testing.T) {
 	}
 }
 
-// shared verification token: portal value must be in the payload when configured
-func TestEbayVerificationToken(t *testing.T) {
+// notifications are acknowledged unconditionally (spec) — authenticity via
+// signature header is the hardening path, not the token.
+func TestEbayNotificationAlwaysAcknowledged(t *testing.T) {
 	srv := testServer(t)
 	t.Setenv("EBAY_VERIFICATION_TOKEN", "tok123")
 	w := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"verificationToken":"tok123"}}`)))
+	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"data":{"userId":"x"}}}`)))
 	if w.Code != 200 {
-		t.Fatalf("matching token must pass: %d", w.Code)
-	}
-	w = httptest.NewRecorder()
-	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"verificationToken":"forged"}}`)))
-	if w.Code != 401 {
-		t.Fatalf("forged token must 401: %d", w.Code)
+		t.Fatalf("acknowledge must not depend on token: %d", w.Code)
 	}
 }
