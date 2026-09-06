@@ -736,6 +736,13 @@ func (s *Server) handleEbayDeletion(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	// shared-secret check: the portal's "verification token" must appear in
+	// the payload. Configured via env; no token configured = accept (dev),
+	// but prod sets it.
+	if want := os.Getenv("EBAY_VERIFICATION_TOKEN"); want != "" && !strings.Contains(string(body), want) {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
 	sum := sha256.Sum256(body)
 	hash := hex.EncodeToString(sum[:])
 	s.DB.Exec(`INSERT OR IGNORE INTO raw_documents (source_id, url, fetched_at, content_hash, content_type, body)

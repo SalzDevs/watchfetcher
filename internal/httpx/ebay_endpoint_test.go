@@ -32,3 +32,19 @@ func TestEbayNotificationEndpoint(t *testing.T) {
 		t.Fatal("empty deletion payload must 400")
 	}
 }
+
+// shared verification token: portal value must be in the payload when configured
+func TestEbayVerificationToken(t *testing.T) {
+	srv := testServer(t)
+	t.Setenv("EBAY_VERIFICATION_TOKEN", "tok123")
+	w := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"verificationToken":"tok123"}}`)))
+	if w.Code != 200 {
+		t.Fatalf("matching token must pass: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"verificationToken":"forged"}}`)))
+	if w.Code != 401 {
+		t.Fatalf("forged token must 401: %d", w.Code)
+	}
+}
