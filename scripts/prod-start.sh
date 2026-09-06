@@ -19,6 +19,12 @@ nightly() {
     echo "[nightly] ebay ingest start"
     /usr/local/bin/watchledger-ingest --source ebay --db "$DB" || echo "[nightly] ebay ingest failed"
   fi
+  if [ -n "${BONHAMS_SALES:-}" ]; then
+    echo "[nightly] bonhams ingest start"
+    ARGS=""
+    for sale in $BONHAMS_SALES; do ARGS="$ARGS --auction $sale"; done
+    /usr/local/bin/watchledger-ingest --source bonhams --fetch-lots --lot-delay-ms 300 $ARGS --db "$DB" || echo "[nightly] bonhams ingest failed"
+  fi
   echo "[nightly] alerts start"
   /usr/local/bin/watchledger-alerts --db "$DB" --base-url "$BASE" || echo "[nightly] alerts failed"
   echo "[nightly] $(date -u +%FT%TZ) done"
