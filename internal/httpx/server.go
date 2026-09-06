@@ -712,18 +712,32 @@ func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
 
 // ---- eBay compliance endpoints (production key set requirement) ----
 
-// handleEbayChallenge — eBay verifies the endpoint before sending
-// notifications: GET with ?verification_challenge=<random> must echo the
-// challenge verbatim, 200, text/plain.
+// handleEbayChallenge — per eBay's Marketplace Account Deletion spec:
+// GET ?challenge_code=<unique> must respond 200, application/json with
+// {"challengeResponse": hex(sha256(challenge_code + verificationToken + endpoint))}
+// — parameters concatenated in exactly that order.
 func (s *Server) handleEbayChallenge(w http.ResponseWriter, r *http.Request) {
-	challenge := r.URL.Query().Get("verification_challenge")
-	if challenge == "" {
+	challengeCode := r.URL.Query().Get("challenge_code")
+	if challengeCode == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, challenge)
+	token := os.Getenv("EBAY_VERIFICATION_TOKEN")
+	endpoint := os.Getenv("EBAY_NOTIFICATION_ENDPOINT")
+	if endpoint == "" {
+		endpoint = "https://watchfairvalue.com/ebay/notifications"
+	}
+	if token == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "verification token not configured")
+		return
+	}
+	h := sha256.New()
+	h.Write([]byte(challengeCode))
+	h.Write([]byte(token))
+	h.Write([]byte(endpoint))
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"challengeResponse": hex.EncodeToString(h.Sum(nil))})
 }
 
 // handleEbayDeletion — signed account-deletion notifications (GDPR/CCPA).

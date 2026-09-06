@@ -1,22 +1,41 @@
 package httpx
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// eBay production key-set requirement: challenge echo verbatim, deletion
-// notifications archived (G3) + acknowledged.
+// eBay production key-set requirement (spec): challenge_code → JSON
+// challengeResponse = sha256(challenge_code + verificationToken + endpoint).
+// Deletion notifications archived (G3) + acknowledged.
 func TestEbayNotificationEndpoint(t *testing.T) {
 	srv := testServer(t)
+	t.Setenv("EBAY_VERIFICATION_TOKEN", "qK4sBjqSWp1WguF1uBe5FZkx622tUyH9zR2")
+
+	challengeCode := "1234567"
+	h := sha256.New()
+	h.Write([]byte(challengeCode))
+	h.Write([]byte("qK4sBjqSWp1WguF1uBe5FZkx622tUyH9zR2"))
+	h.Write([]byte("https://watchfairvalue.com/ebay/notifications"))
+	want := hex.EncodeToString(h.Sum(nil))
+
 	w := httptest.NewRecorder()
-	srv.Routes().ServeHTTP(w, httptest.NewRequest("GET", "/ebay/notifications?verification_challenge=p0RnF7CjaQ%3D%3D", nil))
-	if w.Code != 200 || w.Body.String() != "p0RnF7CjaQ==" {
-		t.Fatalf("challenge echo broken: %d %q", w.Code, w.Body.String())
+	srv.Routes().ServeHTTP(w, httptest.NewRequest("GET", "/ebay/notifications?challenge_code="+challengeCode, nil))
+	if w.Code != 200 {
+		t.Fatalf("challenge: %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), want) {
+		t.Fatalf("challengeResponse wrong:\nwant %s\ngot  %s", want, w.Body.String())
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("content-type must be application/json, got %s", ct)
 	}
 	w = httptest.NewRecorder()
-	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications", strings.NewReader(`{"notification":{"data":{"userId":"x1"}}}`)))
+	srv.Routes().ServeHTTP(w, httptest.NewRequest("POST", "/ebay/notifications",
+		strings.NewReader(`{"metadata":{"topic":"MARKETPLACE_ACCOUNT_DELETION"},"notification":{"data":{"userId":"x1"},"verificationToken":"qK4sBjqSWp1WguF1uBe5FZkx622tUyH9zR2"}}`)))
 	if w.Code != 200 {
 		t.Fatalf("deletion POST: %d", w.Code)
 	}
