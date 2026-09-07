@@ -480,8 +480,13 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	admin := stringsToLower(osGetenv("ADMIN_EMAIL"))
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, email, ok := s.currentUser(r)
-		if !ok || admin == "" || !stringsEqualFold(email, admin) {
-			http.NotFound(w, r)
+		if !ok {
+			// anonymous → sign-in (admin surface hidden but reachable)
+			http.Redirect(w, r, "/login?next="+urlQueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+			return
+		}
+		if admin == "" || !stringsEqualFold(email, admin) {
+			http.NotFound(w, r) // signed in but not the admin — hide existence
 			return
 		}
 		next(w, r)
