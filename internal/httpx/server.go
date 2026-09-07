@@ -19,6 +19,7 @@ import (
 
 	"watchledger/internal/auth"
 	"watchledger/internal/catalogue"
+	"watchledger/internal/curator"
 	"watchledger/internal/engine"
 	"watchledger/internal/evaluate"
 	"watchledger/internal/landedcost"
@@ -93,6 +94,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /watchlist/add", s.requireUser(s.handleWatchAdd))
 	mux.HandleFunc("POST /watchlist/remove", s.requireUser(s.handleWatchRemove))
 	mux.HandleFunc("POST /reports/submit", s.requireUser(s.handleReportSubmit))
+	mux.HandleFunc("GET /admin/curator", s.requireAdmin(s.handleCurator))
+	mux.HandleFunc("POST /admin/curator/parse", s.requireAdmin(s.handleCuratorParse))
+	mux.HandleFunc("POST /admin/curator/ledger", s.requireAdmin(s.handleCuratorLedger))
+	mux.HandleFunc("POST /admin/curator/discard", s.requireAdmin(s.handleCuratorDiscard))
 	mux.HandleFunc("GET /admin/reports", s.requireAdmin(s.handleReportsAdmin))
 	mux.HandleFunc("POST /admin/reports/verify", s.requireAdmin(s.handleReportVerify))
 	mux.HandleFunc("GET /google317ab87a292b5275.html", func(w http.ResponseWriter, r *http.Request) {
@@ -624,6 +629,121 @@ func (s *Server) handleReportSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, back+"?reported=1", http.StatusSeeOther)
 }
 
+// ---- Phase 4.5: curator tool (PLAN.md §17 — the founder IS the curator) ----
+
+// handleCurator — paste raw result lines; parsed previews resolve live.
+func (s *Server) handleCurator(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.DB.Query(`SELECT id, raw_text, house, ref, price, currency, sale_date, status
+		FROM curator_results WHERE status IN ('parsed','unresolved') ORDER BY id DESC`)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "db_error")
+		return
+	}
+	defer rows.Close()
+	type pendingRow struct {
+		ID                                                 int64
+		Raw, House, Ref, Price, Currency, SaleDate, Status string
+	}
+	var pendingRows []pendingRow
+	for rows.Next() {
+		var p pendingRow
+		if rows.Scan(&p.ID, &p.Raw, &p.House, &p.Ref, &p.Price, &p.Currency, &p.SaleDate, &p.Status) == nil {
+			pendingRows = append(pendingRows, p)
+		}
+	}
+	render(w, "curator.html", map[string]any{
+		"Title": "Curator — auction results", "Pending": pendingRows,
+	})
+}
+
+// handleCuratorParse — parse raw lines, store as staged previews.
+func (s *Server) handleCuratorParse(w http.ResponseWriter, r *http.Request) {
+	raw := strings.TrimSpace(r.FormValue("lines"))
+	if raw == "" {
+		http.Redirect(w, r, "/admin/curator", http.StatusSeeOther)
+		return
+	}
+	fx, err := landedcost.LoadFX(s.DB, "latest")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "fx_error")
+		return
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		p := curator.ParseLine(line)
+		pv, err := curator.PreviewRow(s.DB, fx, p, familyScope)
+		if err != nil {
+			continue
+		}
+		b, _ := json.Marshal(map[string]any{
+			"house": pv.House, "ref_candidates": pv.RefCands,
+			"price": pv.Price, "currency": pv.Currency, "sale_date": pv.SaleDate,
+			"resolved": pv.Resolved, "ref": pv.Ref, "brand": pv.Brand, "family": pv.Family,
+			"dial": pv.Dial, "material": pv.Material, "confidence": pv.Confidence,
+			"in_scope": pv.InScope, "price_usd": pv.PriceUSD,
+		})
+		status := "parsed"
+		if !pv.Resolved {
+			status = "unresolved"
+		}
+		ref := pv.Ref
+		s.DB.Exec(`INSERT INTO curator_results (raw_text, house, ref, price, currency, sale_date, status, parsed)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			pv.Raw, pv.House, ref, pv.Price, pv.Currency, pv.SaleDate, status, string(b))
+	}
+	http.Redirect(w, r, "/admin/curator", http.StatusSeeOther)
+}
+
+// handleCuratorLedger — the human gate. Resolved + confirmed → ledger.
+func (s *Server) handleCuratorLedger(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	var raw, house, ref, price, currency, saleDate, parsedJSON string
+	if err := s.DB.QueryRow(`SELECT raw_text, house, ref, price, currency, sale_date, parsed
+		FROM curator_results WHERE id = ? AND status = 'parsed'`, id).
+		Scan(&raw, &house, &ref, &price, &currency, &saleDate, &parsedJSON); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	fx, err := landedcost.LoadFX(s.DB, "latest")
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "fx_error")
+		return
+	}
+	p := curator.Parsed{Raw: raw, House: house, Price: price, Currency: currency, SaleDate: saleDate}
+	p.RefCands = []string{ref}
+	if r.FormValue("premium_pct") != "" {
+		p.PremiumPct = strings.TrimSpace(r.FormValue("premium_pct"))
+	}
+	obsID, err := curator.Ledger(s.DB, house, p, ref, fx)
+	if err != nil {
+		// unresolved ref → back to staging with a message via parsed JSON
+		b, _ := json.Marshal(map[string]any{"error": err.Error(), "parsed": parsedJSON})
+		s.DB.Exec(`UPDATE curator_results SET status='unresolved', parsed=? WHERE id=?`, string(b), id)
+		http.Redirect(w, r, "/admin/curator", http.StatusSeeOther)
+		return
+	}
+	s.DB.Exec(`UPDATE curator_results SET status='ledged', observation_id=? WHERE id=?`, obsID, id)
+	// recompute now: the band is live on the reference page immediately
+	recomputeEngine(s.DB)
+	http.Redirect(w, r, "/admin/curator", http.StatusSeeOther)
+}
+
+func (s *Server) handleCuratorDiscard(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	s.DB.Exec(`UPDATE curator_results SET status='discarded' WHERE id = ?`, id)
+	http.Redirect(w, r, "/admin/curator", http.StatusSeeOther)
+}
+
 // handleReportsAdmin — the human gate (PLAN.md §5.4: nothing renders until verified).
 func (s *Server) handleReportsAdmin(w http.ResponseWriter, r *http.Request) {
 	reports, err := store.OpenPriceReports(s.DB)
@@ -781,6 +901,17 @@ func ioReadAll(r *http.Request) ([]byte, error) {
 			return buf, nil
 		}
 	}
+}
+
+// recomputeEngine — in-process compute run (WAL handles web/concurrent
+// writes). Used after curator ledgering so bands are live immediately.
+func recomputeEngine(db *sql.DB) {
+	written, limited, _, err := ledger.RunCompute(db, time.Now().UTC())
+	if err != nil {
+		log.Printf("recompute: %v", err)
+		return
+	}
+	log.Printf("recompute: %d verdicts (%d limited)", written, limited)
 }
 
 func dialOr(s string) string {

@@ -1,0 +1,70 @@
+{{define "curator.html"}}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} — WatchLedger</title>
+  <style>
+    body { margin:0; font:15px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; background:#101418; color:#e8e4da; }
+    main { max-width:52rem; margin:0 auto; padding:3rem 1.5rem; }
+    h1 { font-family:Georgia,serif; font-size:1.6rem; color:#f6f4ef; }
+    .sub { color:#777; font-size:.85rem; }
+    textarea { width:100%; min-height:8rem; background:#1a1e22; color:#e8e4da; border:1px solid #3a4048; border-radius:8px; padding:.8rem; font:inherit; }
+    button { padding:.5rem 1.2rem; background:#a3762a; color:#101418; border:0; border-radius:6px; font:inherit; cursor:pointer; font-weight:bold; }
+    button.dim { background:#3a4048; color:#e8e4da; }
+    table { width:100%; border-collapse:collapse; margin-top:1.5rem; }
+    td,th { padding:.6rem .5rem; border-bottom:1px solid #2a2f35; text-align:left; vertical-align:top; }
+    th { color:#777; font-size:.65rem; text-transform:uppercase; letter-spacing:.12em; }
+    .resolved { color:#7fbf7f; } .unresolved { color:#d9a441; }
+    .scope-in { color:#7fbf7f; } .scope-out { color:#d9a441; }
+    form { display:inline; }
+    .raw { color:#999; }
+    .usd { text-align:right; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Curator — auction results</h1>
+  <p class="sub">Paste raw result lines from public auction archives. Parse → confirm → ledger. Every row here is a human decision.</p>
+  <form method="post" action="/admin/curator/parse">
+    <textarea name="lines" placeholder="Phillips 2026-03-12 Rolex Submariner 126610LN CHF 14,000 +15% premium&#10;Christies 12 Mar 2026 Nautilus 5711/1A-010 sold £12,500"></textarea>
+    <br><br><button type="submit">Parse lines →</button>
+  </form>
+
+  {{if .Pending}}
+  <h2 style="font-family:Georgia,serif;color:#f6f4fa;font-size:1.2rem">Pending confirmation</h2>
+  <table>
+    <tr><th>ID</th><th>Raw line</th><th>Resolution</th><th>Price</th><th>Date</th><th>House</th><th>Action</th></tr>
+    {{range .Pending}}
+    <tr>
+      <td>{{.ID}}</td>
+      <td class="raw">{{.Raw}}</td>
+      <td>
+        {{if .Ref}}<span class="resolved">{{.Ref}} ✓</span>{{else}}<span class="unresolved">unresolved — edit ref in raw line and re-parse</span>{{end}}
+      </td>
+      <td>{{.Price}} {{.Currency}}</td>
+      <td>{{.SaleDate}}</td>
+      <td>{{.House}}</td>
+      <td>
+        {{if .Ref}}
+        <form method="post" action="/admin/curator/ledger">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <input name="premium_pct" placeholder="premium %" size="8" style="width:6rem;background:#1a1e22;color:#e8e4da;border:1px solid #3a4048;border-radius:4px;padding:.2rem .4rem">
+          <button>ledger →</button>
+        </form>
+        <form method="post" action="/admin/curator/discard"><input type="hidden" name="id" value="{{.ID}}"><button class="dim">discard</button></form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#777;margin-top:2rem">No pending rows. Paste lines above.</p>
+  {{end}}
+
+  <p class="sub" style="margin-top:2rem">Ledgered rows become <code>auction_realised</code> observations (source = the house, rung 1 — human-confirmed). Engine recomputes on the nightly; run <code>make engine</code> for immediate effect.</p>
+  <p><a href="/admin/reports" style="color:#a3762a">price reports →</a></p>
+</main>
+</body>
+</html>
+{{end}}

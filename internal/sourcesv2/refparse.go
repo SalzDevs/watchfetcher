@@ -12,6 +12,7 @@ var refPatterns = []struct {
 	re    *regexp.Regexp
 }{
 	{"omega", regexp.MustCompile(`\b\d{3}\.\d{2}\.\d{2}\.\d{2}\.\d{2}\.\d{3}\b`)},
+	{"omega", regexp.MustCompile(`\b\d{4}\.\d{2}\.\d{2}\b`)},
 	{"patek", regexp.MustCompile(`(?i)\b[0-9]{4}/[0-9A-Z]{1,6}(?:-[0-9A-Z]{1,6}){0,2}\b`)},
 	{"patek", regexp.MustCompile(`(?i)\b[0-9]{4}[A-Z](?:/[0-9A-Z]+)?-[0-9]{3}\b`)},
 	{"rolex", regexp.MustCompile(`(?i)\b1[0-9]{5}[A-Z]{0,4}\b`)},

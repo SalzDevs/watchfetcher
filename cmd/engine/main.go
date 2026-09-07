@@ -36,57 +36,12 @@ func main() {
 
 	// all observations, grouped by cell in memory (SQLite local — fine at ledger scale)
 	// realised tier only: asks/delists are context (PLAN §7.2), never verdict inputs
-	rows, err := db.Query(`
-		SELECT brand, model, dial, material, scope, ref, kind, source_id,
-		       title, url, price_usd, observed_at
-		FROM observations
-		WHERE price_usd IS NOT NULL AND kind = 'auction_realised'`)
+	written, limited, count, err := ledger.RunCompute(db, time.Now().UTC())
 	if err != nil {
-		fatal("read observations:", err)
+		fatal("compute:", err)
 	}
-	defer rows.Close()
-
-	cells := map[string][]engine.Observation{}
-	count := 0
-	for rows.Next() {
-		var o engine.Observation
-		var priceUSD string
-		var observedAt int64
-		if err := rows.Scan(&o.Brand, &o.Model, &o.Dial, &o.Material, &o.Scope, &o.Ref,
-			&o.Kind, &o.Source, &o.Title, &o.URL, &priceUSD, &observedAt); err != nil {
-			fatal("scan:", err)
-		}
-		d, err := moneyFromString(priceUSD)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warn: corrupt price %q skipped: %v\n", priceUSD, err)
-			continue
-		}
-		o.PriceUSD = d
-		o.ObservedAt = time.Unix(observedAt, 0)
-		key := engine.CellKey(o.Brand, o.Model, o.Dial, o.Material, o.Scope)
-		cells[key] = append(cells[key], o)
-		count++
-	}
-	rows.Close()
-	fmt.Printf("engine: %d observations in %d cells\n", count, len(cells))
-
-	now := time.Now().UTC()
-	written, limited := 0, 0
-	for key, obs := range cells {
-		p := splitCell(key)
-		v := engine.ComputeVerdict(p[0], p[1], p[2], p[3], p[4], obs, now)
-		if v == nil {
-			continue
-		}
-		if err := ledger.SaveVerdictContent(db, v); err != nil {
-			fatal("save verdict:", err)
-		}
-		written++
-		if v.GatesStatus == "limited" {
-			limited++
-		}
-	}
-	fmt.Printf("engine: %d verdicts written (%d limited by gates) under ruleset %s\n", written, limited, engine.Current.Version)
+	fmt.Printf("engine: %d realised observations in ledger, %d verdicts written (%d limited by gates) under ruleset %s\n",
+		count, written, limited, engine.Current.Version)
 }
 
 func splitCell(cell string) []string {
