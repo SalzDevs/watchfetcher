@@ -486,6 +486,7 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if admin == "" || !stringsEqualFold(email, admin) {
+			log.Printf("admin gate: signed in as %q is not ADMIN_EMAIL %q — 404", email, admin)
 			http.NotFound(w, r) // signed in but not the admin — hide existence
 			return
 		}
