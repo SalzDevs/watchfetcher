@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -17,7 +18,27 @@ import (
 func main() {
 	inPath := flag.String("in", "", "JSON export path")
 	dbPath := flag.String("db", "/data/watchledger.sqlite", "ledger database path")
+	purgeSources := flag.String("purge-sources", "", "comma-separated source_ids whose observations + verdicts must be deleted (data hygiene)")
 	flag.Parse()
+
+	if *purgeSources != "" {
+		db, err := sql.Open("sqlite", *dbPath)
+		if err != nil {
+			panic(err)
+		}
+		defer db.Close()
+		for _, src := range strings.Split(*purgeSources, ",") {
+			res, err := db.Exec(`DELETE FROM observations WHERE source_id = ?`, strings.TrimSpace(src))
+			if err != nil {
+				panic(err)
+			}
+			n, _ := res.RowsAffected()
+			fmt.Printf("purged %d observations from %q\n", n, src)
+		}
+		db.Exec(`DELETE FROM verdict_content`)
+		fmt.Println("verdict_content cleared — run engine to recompute clean")
+		return
+	}
 	if *inPath == "" {
 		fmt.Println("--in required")
 		os.Exit(2)
