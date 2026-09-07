@@ -48,7 +48,15 @@
     — we publish counts only until the evidence meets the methodology threshold. A number here would be a claim, and we don't make claims.</div>
   {{end}}
   {{else}}
-  <div class="warn"><b>No auction evidence in the ledger yet</b> for this exact configuration. When results are ingested and gates pass, the realised range appears here. "We don't know yet" is a valid answer.</div>
+  <div class="warn"><b>No auction realised yet</b> for this exact configuration. Modern references rarely appear at auction — bands build as sales happen.</div>
+  {{if .AskMedianNoBand}}
+  <table>
+    <tr><td>Market asks — median of {{.AskCountNoBand}} listings (90d)</td><td class="price">{{.AskMedianNoBand}} USD</td></tr>
+  </table>
+  <p class="note" style="font-size:.8rem;color:#777">Seller <b>asks</b>, not a fair-value claim — asking prices are aspirations, not what was paid. We publish counts until auction realised passes the evidence gates.</p>
+  {{else}}
+  <p class="note" style="font-size:.8rem;color:#777">No asks tracked yet either. Both sides accrue nightly.</p>
+  {{end}}
   {{end}}
 
   {{if .SpreadPct}}

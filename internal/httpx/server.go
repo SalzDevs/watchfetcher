@@ -203,22 +203,32 @@ func (s *Server) handleReference(w http.ResponseWriter, r *http.Request) {
 		if v != nil {
 			page["Verdict"] = v
 			page["Count"] = v.Count
-		}
-		page["Evidence"] = evidenceRows(obs)
+			page["Evidence"] = evidenceRows(obs)
 
-		// Phase 3: asks vs realised spread — published only when the realised
-		// side passes gates (a spread built on thin data is a claim we refuse,
-		// PLAN.md §3/§7.4).
-		if v.GatesStatus == "pass" {
-			if asks, n := s.refAsks(res); n > 0 {
-				askMedian := medianAsks(asks)
-				if askMedian.IsPositive() {
-					spread := askMedian.Sub(v.Median).Div(v.Median).Mul(money.MustDecimal("100")).Round(1)
-					page["AskMedian"] = askMedian.StringFixed(0)
-					page["AskCount"] = n
-					page["SpreadPct"] = spread.StringFixed(1)
+			// Phase 3: asks vs realised spread — published only when the realised
+			// side passes gates (a spread built on thin data is a claim we refuse,
+			// PLAN.md §3/§7.4).
+			if v.GatesStatus == "pass" {
+				if asks, n := s.refAsks(res); n > 0 {
+					askMedian := medianAsks(asks)
+					if askMedian.IsPositive() {
+						spread := askMedian.Sub(v.Median).Div(v.Median).Mul(money.MustDecimal("100")).Round(1)
+						page["AskMedian"] = askMedian.StringFixed(0)
+						page["AskCount"] = n
+						page["SpreadPct"] = spread.StringFixed(1)
+					}
 				}
 			}
+		}
+	}
+
+	// asks context even WITHOUT a realised band (PLAN §7.4: publish counts,
+	// never a range) — clearly labelled as seller aspirations, not a claim
+	if asks, n := s.refAsks(res); n > 0 {
+		askMedian := medianAsks(asks)
+		if askMedian.IsPositive() {
+			page["AskMedianNoBand"] = askMedian.StringFixed(0)
+			page["AskCountNoBand"] = n
 		}
 	}
 	// family navigation (the vault, simplified)
