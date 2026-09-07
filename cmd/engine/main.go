@@ -35,10 +35,12 @@ func main() {
 	}
 
 	// all observations, grouped by cell in memory (SQLite local — fine at ledger scale)
+	// realised tier only: asks/delists are context (PLAN §7.2), never verdict inputs
 	rows, err := db.Query(`
 		SELECT brand, model, dial, material, scope, ref, kind, source_id,
 		       title, url, price_usd, observed_at
-		FROM observations WHERE price_usd IS NOT NULL`)
+		FROM observations
+		WHERE price_usd IS NOT NULL AND kind = 'auction_realised'`)
 	if err != nil {
 		fatal("read observations:", err)
 	}

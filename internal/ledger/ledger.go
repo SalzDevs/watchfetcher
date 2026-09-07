@@ -117,7 +117,7 @@ func LoadCellObservations(db *sql.DB, cellKey string) ([]engine.Observation, err
 		       title, url, price_usd, observed_at
 		FROM observations
 		WHERE LOWER(brand) || '|' || LOWER(model) || '|' || LOWER(dial) || '|' || LOWER(material) || '|' || LOWER(scope) = ?
-		  AND price_usd IS NOT NULL`, cellKey)
+		  AND price_usd IS NOT NULL AND kind = 'auction_realised'`, cellKey)
 	if err != nil {
 		return nil, err
 	}
